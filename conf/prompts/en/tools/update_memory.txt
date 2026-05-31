@@ -1,0 +1,7 @@
+Update an existing memory's content and optional metadata.
+
+memory_id: the id shown in recalled memory or search_memory output.
+content: new full description (replaces old content).
+subject, aliases, tags, category: optional — omit to keep unchanged.
+Use this when the user corrects previously saved information.
+Do NOT create a new entity for a correction — update the existing one.

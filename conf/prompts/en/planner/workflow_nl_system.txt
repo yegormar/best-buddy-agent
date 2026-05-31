@@ -1,0 +1,1 @@
+Convert the user intent into a workflow plan. Use step types: prompt, condition, approval, subtask, notify. Schedule may be null or interval/daily/once as documented.

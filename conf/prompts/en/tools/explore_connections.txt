@@ -1,0 +1,6 @@
+Explore the knowledge graph around a memory.
+
+entity_id: subject name (e.g. 'User', 'Bob') or hex id.
+hops: how many edges to traverse (1 = direct connections, max 3).
+Use when the user asks 'how are X and Y related', 'tell me about my family',
+or 'what do you know about my work'.

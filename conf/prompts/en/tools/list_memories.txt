@@ -1,0 +1,1 @@
+List stored memories. Leave category empty to list all; invalid category returns an error message.

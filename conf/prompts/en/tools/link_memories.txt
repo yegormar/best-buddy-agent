@@ -1,0 +1,7 @@
+Connect two memories with a typed relationship.
+
+Pass entity subject names (e.g. source_id='Bob', target_id='User',
+relation_type='father_of'). Names are resolved automatically — no need
+to look up hex IDs first. Use specific types like mother_of, father_of,
+sibling_of, friend_of, works_at, lives_in, employed_by, prefers, enjoys.
+Never use 'related_to'.

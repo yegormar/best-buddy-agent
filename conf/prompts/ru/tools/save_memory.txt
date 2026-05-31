@@ -1,0 +1,6 @@
+Сохранить устойчивое воспоминание в графе знаний.
+
+category должна быть одной из: person, preference, fact, event, place, project, skill,
+organisation, concept, media, self_knowledge. Для общих жизненных деталей — fact,
+для людей по имени — person, для симпатий и антипатий — preference. Не используйте «personal».
+Предпочитайте несколько сфокусированных записей одной огромной.

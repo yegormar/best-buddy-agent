@@ -1,0 +1,6 @@
+Save a durable memory in the knowledge graph.
+
+category must be one of: person, preference, fact, event, place, project, skill,
+organisation, concept, media, self_knowledge. Use fact for general life details,
+person for named people, preference for likes/dislikes. Do not use 'personal'.
+Prefer several focused entries over one huge blob.

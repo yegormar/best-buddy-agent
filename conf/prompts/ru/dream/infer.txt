@@ -1,0 +1,56 @@
+Вы — куратор графа знаний с высокими стандартами. Две сущности
+совместно встречаются в {co_occurrence_count} беседе(ах), но между ними нет ребра в
+графе. Определите, существует ли КОНКРЕТНАЯ, ФАКТИЧЕСКАЯ связь.
+
+Сущность A — type: {type_a}, subject: «{subject_a}»
+Описание: {description_a}
+
+Сущность B — type: {type_b}, subject: «{subject_b}»
+Описание: {description_b}
+
+Фрагмент беседы, где обе встречаются:
+{conversation_excerpt}
+
+ПРАВИЛА — читайте внимательно:
+1. Приведите краткое свидетельство из фрагмента или описаний сущностей,
+подтверждающее связь. Если подтверждающих свидетельств нет вовсе —
+верните has_relation: false.
+2. Связь должна быть КОНКРЕТНОЙ. Обобщённые метки вроде «related_to»,
+«associated_with» или «connected_to» НИКОГДА недопустимы.
+3. Выберите правильное НАПРАВЛЕНИЕ. «source» — субъект, который выполняет
+действие или несёт роль. Пример: «Alice lives in London» →
+source="Alice", target="London", relation_type="lives_in".
+4. Верните оценку confidence: 1.0 = явно сказано, 0.8–0.9 = ясно
+подразумевается. Ниже 0.80 — не возвращайте.
+5. Совместное появление само по себе НЕ является доказательством. То, что две сущности
+упомянуты в одной беседе, НЕ означает, что они связаны. Вы ДОЛЖНЫ найти конкретное
+утверждение или ясное подразумевание, связывающее их.
+6. «uses» означает активное использование как инструмента, зависимости или платформы —
+НЕ просто упоминание, поиск или обсуждение. «Competitive intelligence
+searches for news about OpenAI» — это НЕ связь «uses».
+7. НЕ связывайте широкие концепции (например, «AI Agents», «Artificial Intelligence»,
+«Large Language Models») с компаниями через «created_by» или «uses», если
+текст явно не утверждает именно такую связь.
+8. НЕ создавайте тавтологические связи, где имя одной сущности содержится
+в имени другой (например, «Japanese Learning» → «Japanese» избыточно).
+9. НЕ связывайте сущности только потому, что у них общий владелец или контекст —
+«Dad» и «Japanese Learning» не связаны только потому, что пользователь обсуждал оба.
+
+Допустимые типы связей: knows, friend_of, colleague_of, boss_of,
+mentor_of, mother_of, father_of, sibling_of, married_to, child_of,
+partner_of, cousin_of, lives_in, works_at, located_in, born_in, visits,
+based_in, works_on, manages, manager_of, member_of, part_of, employed_by,
+founded, leads, reports_to, prefers, enjoys, dislikes, interested_in,
+has_hobby, deadline_for, scheduled_for, started_on, studies,
+proficient_in, certified_in, learning, teaches, has_skill, reading,
+watching, listening_to, recommends, authored, uses, created_by, owns,
+has_pet, pet_of, treats, attends, participates_in
+
+Если вы уверены, что связь существует, верните:
+{{"has_relation": true, "relation_type": "<type>", "source": "<subject_of_source_entity>", "target": "<subject_of_target_entity>", "confidence": <0.80-1.0>, "evidence": "<краткое свидетельство из фрагмента или описаний>"}}
+
+Если НЕТ ясной, конкретной связи, вы не уверены, или единственная
+общность — что обе сущности обсуждал одни и тот же пользователь, верните:
+{{"has_relation": false}}
+
+Верните ТОЛЬКО JSON-объект. Без другого текста.

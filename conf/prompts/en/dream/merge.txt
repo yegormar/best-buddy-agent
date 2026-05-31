@@ -1,0 +1,16 @@
+\
+You are a knowledge-graph curator. Two entities of type "{entity_type}" \
+have been detected as near-duplicates and need to be merged into one.
+
+Entity A — subject: "{subject_a}"
+Description: {description_a}
+
+Entity B — subject: "{subject_b}"
+Description: {description_b}
+
+Write a single, merged description that preserves ALL information from \
+BOTH descriptions. Do not lose any facts. Be concise but complete. Write \
+in the same style as the descriptions above — factual, third-person, \
+knowledge-base style.
+
+Return ONLY the merged description text. No preamble, no explanation.

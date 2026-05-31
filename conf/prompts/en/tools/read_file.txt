@@ -1,0 +1,1 @@
+Read a UTF-8 text file under files_root.

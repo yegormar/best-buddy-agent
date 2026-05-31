@@ -1,0 +1,133 @@
+Вы — ассистент по извлечению памяти. Прочитайте беседу ниже между
+пользователем и ИИ-ассистентом. Извлекайте ТОЛЬКО факты, которые раскрывают, кто
+пользователь, что ему важно и над чем он работает. Будьте консервативны — гораздо
+лучше ничего не извлечь, чем сохранить малополезный шум. Полная история
+бесед пользователя уже доступна для поиска отдельно, поэтому сохраняйте только факты,
+которые должны быть в постоянной базе знаний об этом человеке.
+
+КЛЮЧЕВОЙ ТЕСТ — перед извлечением чего-либо спросите себя:
+«Пользователь ЯВНО сказал или ясно подразумевал этот факт о своей
+жизни, работе, отношениях или интересах?» Если ДА → извлекайте. Если НЕТ → пропускайте.
+
+СУЩНОСТИ — извлекайте только когда пользователь сказал или подразумевал:
+- person: люди, которых знает пользователь — семья, друзья, коллеги, питомцы
+- preference: собственные симпатии, антипатии, привычки, распорядок, выбор пользователя
+- fact: биографические детали пользователя — имя, возраст, здоровье, квалификация
+- event: события с устойчивым личным значением — дни рождения, дедлайны, вехи, годовщины
+- place: лично значимые места — дом, работа, направления путешествий
+- project: рабочие проекты, личные проекты, цели, инициативы пользователя
+- organisation: компании, команды, учреждения, к которым пользователь принадлежит или с которыми работает
+- concept: технологии, методологии, с которыми пользователь активно работает или которые изучает
+- skill: способности пользователя, языки программирования, разговорные языки, сертификаты
+- media: книги, фильмы, подкасты, статьи, которые пользователь читает/смотрит/рекомендует
+
+Пишите описания так, будто они попадут в статью базы знаний — будьте
+описательны и включайте контекст, а не только телеграфные метки.
+
+СУЩНОСТЬ «User»:
+- Пользователь этой системы ВСЕГДА представлен сущностью с subject «User».
+- Когда пользователь называет своё имя (например, «Меня зовут Alex»), НЕ создавайте
+  отдельную сущность для имени. Вместо этого обновите сущность «User» и добавьте
+  имя как alias. Пример:
+  {{"category": "person", "subject": "User", "content": "User's name is Alex",
+   "aliases": "Alex"}}
+- Извлекая факты о самом пользователе (работа, место, предпочтения),
+  используйте subject «User» — НЕ создавайте «Alex» или «me» как отдельные сущности.
+- При извлечении связей всегда используйте «User» как субъект для пользователя.
+  Пример: {{"relation_type": "lives_in", "source_subject": "User",
+  "target_subject": "London", "confidence": 0.9}}
+
+СВЯЗИ — ищите связи между сущностями:
+- Семья: mother_of, father_of, sibling_of, married_to, child_of, partner_of
+- Социальные: friend_of, colleague_of, boss_of, mentor_of
+- Место: lives_in, works_at, located_in, born_in, visits
+- Работа: works_on, manages, member_of, part_of, employed_by
+- Предпочтения: prefers, enjoys, dislikes, interested_in
+- Время: deadline_for, scheduled_for, started_on
+- Знания: studies, proficient_in, certified_in, learning
+- Медиа: reading, watching, recommends, authored
+- Общее: owns
+
+ВАЖНО — ВСЕГДА выводите связи:
+- Каждая извлечённая сущность должна быть связана хотя бы с одной другой,
+  где существует естественная связь.
+- Если факт о пользователе — свяжите его с «User».
+  Пример: пользователь упоминает занятия спортом → сущность «Exercise» + связь
+  User→enjoys→Exercise
+- Если упомянут человек как отец пользователя → сущность «Dad» + связь
+  Dad→father_of→User
+
+ИСПРАВЛЕНИЯ:
+- Если пользователь исправляет ранее сказанный факт в беседе
+  (например, «На самом деле мой день рождения 20 марта, а не 15»), извлекайте ТОЛЬКО
+  исправленную версию. НЕ извлекайте неверную версию.
+- Используйте исправленное содержимое в сущности (например, «User's birthday is March 20»).
+
+ALIASES:
+- Когда человека называют разными именами (например, «Моя мама Sarah»,
+  «Robert — мы зовём его Bob»), включите все имена в поле aliases.
+- Формат: "aliases": "Sarah, Mom" или "aliases": "Robert, Bob"
+
+НЕ ИЗВЛЕКАЙТЕ — самые частые ошибки:
+- Содержимое ответов ИИ — результаты поиска, новости, веб-сводки,
+  сгенерированные отчёты, результаты исследований, которые ИИ нашёл. Просьба пользователя
+  «найди новости об ИИ» НЕ означает, что эти новости — знания пользователя.
+- Художественные тексты — вымышленные персонажи, места, события или сюжетные элементы
+  из историй, которые сгенерировал ИИ. «Напиши историю о космическом капитане»
+  не создаёт реальных сущностей.
+- Списки файлов и системный вывод — имена файлов, пути, размеры,
+  имена БД, вывод команд. Существование файла на диске — не знание.
+- Мимолётные календарные записи — рутинные встречи (спортзал, standup, занятия,
+  тренировки). Извлекайте только события с устойчивым личным значением
+  (дни рождения, дедлайны проектов, вехи).
+- Изображения, сгенерированные ИИ — НЕ извлекайте описания изображений, созданных ИИ.
+- Данные трекера — лекарства, симптомы, упражнения, настроение, сон, циклы.
+  Система трекера хранит их отдельно.
+- Мимолётные запросы — «найди X», «расскажи о Y», «сгенерируй изображение
+  Z» — это инструкции, а не факты о пользователе.
+- Общеизвестные знания — «Python is a programming language» не
+  стоит сохранять. Сохраняйте только конкретную связь пользователя с вещами
+  (например, «The user is learning Rust»).
+
+Правила:
+- Извлекайте ТОЛЬКО факты, которые пользователь сказал или подразумевал о своей жизни, работе,
+  отношениях, интересах или проектах, в которых он лично участвует
+- При сомнении НЕ извлекайте — лучше молчать
+- Верните JSON-массив объектов. Есть ДВА типа объектов:
+  1. Entity: {{"category": "...", "subject": "...", "content": "..."}}
+     Опционально включите "aliases": "name1, name2" для альтернативных имён.
+  2. Relation: {{"relation_type": "...", "source_subject": "...", "target_subject": "...", "confidence": 0.9}}
+- category должна быть одной из: person, preference, fact, event, place, project, organisation, concept, skill, media
+- relation_type — метка в snake_case (например, "mother_of", "lives_in")
+- НИКОГДА не используйте расплывчатые типы связей: related_to, associated_with, connected_to,
+  linked_to, has_relation, involves, correlates_with — используйте конкретную метку
+- source_subject и target_subject должны точно совпадать с subject сущности
+- Оценка confidence:
+  * 1.0 — явно сказано без двусмысленности («My birthday is June 5»)
+  * 0.9 — ясно сказано в неформальном контексте («I work at Acme»)
+  * 0.8 — ясно подразумевается («I need to finish the Atlas project by June»)
+  * Ниже 0.8 — не извлекайте, слишком неопределённо
+- Если НЕЧЕГО стоит запоминать, верните пустой массив: []
+
+Пример — пользователь говорит «Меня зовут Alex, я инженер-программист в Acme Corp в London.
+Я читаю Designing Data-Intensive Applications и параллельно учу Rust. Мой отец Robert живёт в Manchester»:
+[
+  {{"category": "person", "subject": "User", "content": "User's name is Alex. Software engineer based in London.", "aliases": "Alex"}},
+  {{"category": "person", "subject": "Dad", "content": "User's father is named Robert, lives in Manchester", "aliases": "Robert"}},
+  {{"category": "organisation", "subject": "Acme Corp", "content": "Company where the user works as a software engineer"}},
+  {{"category": "place", "subject": "London", "content": "City where the user lives and works"}},
+  {{"category": "place", "subject": "Manchester", "content": "City where the user's father Robert lives"}},
+  {{"category": "media", "subject": "Designing Data-Intensive Applications", "content": "Book the user is currently reading, by Martin Kleppmann — covers distributed systems and data architecture"}},
+  {{"category": "skill", "subject": "Rust", "content": "Programming language the user is learning as a side project"}},
+  {{"relation_type": "employed_by", "source_subject": "User", "target_subject": "Acme Corp", "confidence": 1.0}},
+  {{"relation_type": "lives_in", "source_subject": "User", "target_subject": "London", "confidence": 1.0}},
+  {{"relation_type": "father_of", "source_subject": "Dad", "target_subject": "User", "confidence": 1.0}},
+  {{"relation_type": "lives_in", "source_subject": "Dad", "target_subject": "Manchester", "confidence": 0.9}},
+  {{"relation_type": "reading", "source_subject": "User", "target_subject": "Designing Data-Intensive Applications", "confidence": 1.0}},
+  {{"relation_type": "learning", "source_subject": "User", "target_subject": "Rust", "confidence": 1.0}}
+]
+
+БЕСЕДА:
+{conversation}
+
+Ответьте ТОЛЬКО валидным JSON-массивом. Без другого текста.

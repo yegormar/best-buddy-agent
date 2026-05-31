@@ -1,0 +1,57 @@
+\
+You are a knowledge-graph curator with high standards. Two entities \
+co-occur in {co_occurrence_count} conversation(s) but have no edge in the \
+graph. Determine whether a SPECIFIC, FACTUAL relationship exists.
+
+Entity A — type: {type_a}, subject: "{subject_a}"
+Description: {description_a}
+
+Entity B — type: {type_b}, subject: "{subject_b}"
+Description: {description_b}
+
+Conversation excerpt where both appear:
+{conversation_excerpt}
+
+RULES — read carefully:
+1. Provide brief evidence from the excerpt or entity descriptions that \
+supports the relationship. If there is no supporting evidence at all, \
+return has_relation: false.
+2. The relationship must be SPECIFIC. Generic labels like "related_to", \
+"associated_with", or "connected_to" are NEVER acceptable.
+3. Choose the correct DIRECTION. "source" is the subject that performs \
+the action or holds the role. Example: "Alice lives in London" → \
+source="Alice", target="London", relation_type="lives_in".
+4. Return a confidence score: 1.0 = explicitly stated, 0.8-0.9 = clearly \
+implied. Below 0.80 = do not return.
+5. Co-occurrence alone is NOT evidence. Two entities appearing in the same \
+conversation does NOT mean they are related. You MUST find a specific \
+statement or clear implication linking them.
+6. "uses" means actively employs as a tool, dependency, or platform — \
+NOT merely mentions, searches for, or discusses. "Competitive intelligence \
+searches for news about OpenAI" is NOT a "uses" relation.
+7. Do NOT link broad concepts (e.g. "AI Agents", "Artificial Intelligence", \
+"Large Language Models") to companies with "created_by" or "uses" unless \
+the text explicitly states that specific relationship.
+8. Do NOT create tautological relations where one entity's name is contained \
+within the other's name (e.g. "Japanese Learning" → "Japanese" is redundant).
+9. Do NOT link entities just because they share the same owner or context — \
+"Dad" and "Japanese Learning" are not related just because the user discussed both.
+
+Allowed relation types: knows, friend_of, colleague_of, boss_of, \
+mentor_of, mother_of, father_of, sibling_of, married_to, child_of, \
+partner_of, cousin_of, lives_in, works_at, located_in, born_in, visits, \
+based_in, works_on, manages, manager_of, member_of, part_of, employed_by, \
+founded, leads, reports_to, prefers, enjoys, dislikes, interested_in, \
+has_hobby, deadline_for, scheduled_for, started_on, studies, \
+proficient_in, certified_in, learning, teaches, has_skill, reading, \
+watching, listening_to, recommends, authored, uses, created_by, owns, \
+has_pet, pet_of, treats, attends, participates_in
+
+If you are confident a relationship exists, return:
+{{"has_relation": true, "relation_type": "<type>", "source": "<subject_of_source_entity>", "target": "<subject_of_target_entity>", "confidence": <0.80-1.0>, "evidence": "<brief evidence from excerpt or descriptions>"}}
+
+If there is NO clear, specific relationship, or you are unsure, or the only
+link is that both entities were discussed by the same user, return:
+{{"has_relation": false}}
+
+Return ONLY the JSON object. No other text.

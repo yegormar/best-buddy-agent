@@ -1,0 +1,135 @@
+# best-buddy-agent
+
+Standalone extracted Python project for best buddy memory, context, and workflows,
+configured for **locally hosted Ollama** and **pydantic-ai** (no LangChain).
+
+## Included
+
+- **Agent runtime** (`agent_runtime.py`, `approval.py`, `agent_trace.py`) — pydantic-ai + Ollama + local trace file
+- Knowledge graph memory core (`knowledge_graph.py`)
+- Legacy memory compatibility wrapper (`memory.py`)
+- Background memory extraction (`memory_extraction.py`)
+- Nightly dream cycle (focused variant) (`dream_cycle.py`)
+- Agent context utilities (`agent_context.py`)
+- Orchestrator delegate (`orchestrator.py`) → `run_turn()`
+- Tools package (`tools/`) — invoked only via pydantic-ai `@agent.tool`
+- Background workflow engine (`workflow_engine.py`) with:
+  - natural-language workflow creation helper
+  - typed step pipelines (`prompt`, `condition`, `approval`, `subtask`, `notify`)
+  - persistent run state + step-level history
+  - recurring schedule dispatch loop (`interval`, `daily`, `once`)
+- Lightweight local thread store (`threads.py`)
+- Optional Gmail read + drafts (`docs/GMAIL.md`, ported from Thoth; no send tool)
+- Interactive chat runtime + CLI (`runtime.py`, `cli.py`)
+- Telegram channel (`channels/telegram.py`, optional `[telegram]` extra)
+
+## Configuration
+
+Copy and edit:
+
+- `conf/best_buddy_agent.conf.example` -> `conf/best_buddy_agent.conf`
+
+Required keys are in `[llm]` and align with existing project style:
+
+- `llm_host`
+- `llm_port`
+- `llm_model`
+- `llm_keep_alive`
+- `llm_temperature`
+- `llm_top_p`
+- `llm_num_ctx`
+
+Prompts load from language bundles under `conf/prompts/`:
+
+- `[prompts] language` — e.g. `en`, `ru` (required; see `conf/prompts/en/`)
+- Optional `agent_system_prompt_file` — override only `agent_system.txt` for that locale
+
+Optional `[agent]` keys:
+
+- `assistant_name` — how BB introduces itself in chat (default `BB`; used for CLI prefix and system prompt)
+
+Optional `[tools]` keys:
+
+- `files_root` (allowed root for file reads)
+- `max_tool_iterations` (per-turn loop cap)
+
+Optional `[logging]` keys:
+
+- `enabled` (`true`/`false`) - turn trace logging on or off
+- `file` - log file path (required when `enabled=true`; relative to config dir)
+- `log_prompts` - include full orchestrator/LLM prompts
+- `log_responses` - include full model outputs and tool results
+- `log_message_history`, `log_capability_events`, `log_tool_args` (see example conf)
+
+See `docs/MIGRATION_PYDANTIC_AI.md`, `docs/DEBUGGING.md`, `docs/ARCHITECTURE.md`, `docs/TELEGRAM.md`.
+
+**Memory (important):** [docs/MEMORY_WORKFLOW.md](docs/MEMORY_WORKFLOW.md) (developers) · [docs/MEMORY_WORKFLOW_AI.md](docs/MEMORY_WORKFLOW_AI.md) (AI assistants).
+
+Trace logs are written in large delimited blocks so they are easy to read and
+copy/paste into issues or chats.
+
+You can also point to a custom config file with:
+
+- env: `BEST_BUDDY_AGENT_CONF=/path/to/best_buddy_agent.conf`
+- CLI: `--config /path/to/best_buddy_agent.conf`
+
+## Data directory
+
+By default state is stored in `~/.best_buddy_agent`.
+Override with:
+
+- `BEST_BUDDY_AGENT_DATA_DIR=/path/to/data`
+
+## Install
+
+```bash
+pip install -e '.[dev,reliability]'
+```
+
+For Telegram: `pip install -e '.[telegram,faiss,reliability]'`
+
+## Run tests
+
+```bash
+.venv/bin/pytest tests -q
+```
+
+Optional live Ollama: `BEST_BUDDY_AGENT_OLLAMA_TEST=1 pytest tests -m ollama -q`
+
+## Startup checks
+
+Before chat or Telegram serves traffic, the agent validates config, data paths,
+SQLite DBs, Ollama reachability + model, optional Gmail (when `[gmail] enabled = true`),
+and Telegram (when `[telegram] enabled = true`). Failures exit with a clear list.
+
+Run checks without starting chat:
+
+```bash
+best-buddy-agent-doctor --config conf/best_buddy_agent.conf
+```
+
+Profiles: `--profile chat` (default for doctor: `all`), `telegram`, or `all`.
+
+## Run interactive agent
+
+```bash
+.venv/bin/python -m best_buddy_agent.cli --config conf/best_buddy_agent.conf
+```
+
+or after editable install:
+
+```bash
+best-buddy-agent-chat --config conf/best_buddy_agent.conf
+```
+
+## Run Telegram bot
+
+Set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_ALLOWED_USER_ID` (see [docs/TELEGRAM.md](docs/TELEGRAM.md)), then:
+
+```bash
+best-buddy-agent-telegram --config conf/best_buddy_agent.conf
+```
+
+## Notes
+
+- `wiki_vault` is wired as a no-op in standalone mode.

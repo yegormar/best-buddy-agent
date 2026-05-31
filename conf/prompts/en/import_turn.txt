@@ -1,0 +1,89 @@
+SCRIPTED MEMORY IMPORT (not live chat)
+
+You are loading pre-extracted interview facts into long-term memory.
+The block below is not a user speaking live — it is a batch import payload.
+It may contain MERGED_CONVERSATION headers, === CHUNK ... === sections, and
+DRAFT EXTRACTION with Entities:, Facts:, and Relations: blocks. Process ALL
+chunks and ALL sections in the payload.
+
+WORKFLOW (strict order):
+Phase 1 — save_memory for every entity and fact.
+Phase 2 — link_memories for every valid relation (only after Phase 1 completes).
+
+Phase 1 — save_memory rules:
+- Read every line under Entities: and every numbered item under Facts:.
+- NARRATOR → User (mandatory; overrides Entities spelling):
+  The interview narrator is ALWAYS stored as subject "User" (category: person).
+  Do NOT save a separate entity for any storyteller label from Entities: or Facts:.
+  Merge every fact about the narrator into ONE save_memory call with subject="User".
+  Map storyteller labels in the payload to User (language-specific labels in the
+  file count as narrator — do not copy them as subject names).
+- For each other distinct entity, call save_memory once with a focused content string.
+  Merge all Facts: items about the same subject into that entity's content.
+- When a Fact includes a quoted line (labeled Quote: or an equivalent quote
+  label in the source file), include the quote verbatim in content, e.g.
+  Quote: "..."
+- Choose category from context: person, place, event, fact, preference, etc.
+  Use valid categories only: person, preference, fact, event, place, project,
+  skill, organisation, concept, media, self_knowledge — not "personal" or "group".
+  For a collective or group label (several people named as one entity), use person.
+- Put tags "conversation:{conversation_id}" on EVERY save_memory call.
+- Use the exact subject spelling from the Entities: list as the canonical name,
+  EXCEPT the narrator (always subject "User", see above).
+  If Relations: uses different capitalization or spacing, still save_memory using
+  the Entities: spelling for non-narrator entities.
+- Before Phase 2, walk every Relations: line: any endpoint that is not the narrator
+  must already exist from save_memory. If a name appears only in Relations: or Facts:
+  but not Entities:, create it in Phase 1 with the category implied by context.
+
+Phase 2 — link_memories rules:
+- Use subject names from save_memory (not hex ids).
+- In source_id and target_id, use "User" whenever Relations: names the narrator —
+  never the raw storyteller label from the file.
+- Translate the relation description to a specific relation_type (snake_case).
+  Never use related_to, associated_with, connected_to, linked_to, describes,
+  differs_from, contrasts_with, or similar descriptive types.
+
+Relation type reference (map free-text descriptions):
+  visited / was at / spent time at              → visits
+  lived in / stayed at / rented                 → lives_in
+  born in                                       → born_in
+  worked at / employed by                       → works_at
+  father/mother/sibling/spouse/child of         → father_of, mother_of,
+                                                  sibling_of, spouse_of, child_of
+  grandmother/grandfather/grandparent of        → grandmother_of, grandfather_of,
+                                                  grandparent_of (grandparent → grandchild)
+  friend of / colleague of / knows              → friend_of, colleague_of, knows
+  prefers / enjoys / dislikes                   → prefers, enjoys, dislikes
+  has / owns (possession)                       → uses or owns (never bare "has")
+  same person under two names                   → one save_memory; put extra names in
+                                                  content or aliases — never same_person links
+
+Skip link_memories when the Relations: line is NOT a typed relationship:
+  - parenthetical text only characterizes a target ("described as …", "called …")
+  - parenthetical text only contrasts entities ("unlike …", "in contrast to …")
+    without stating what relationship holds
+  - no specific relation_type fits the wording
+
+Pattern guidance (adapt names from the payload — do not invent entities):
+  - SKIP: contrast-only parenthetical after an otherwise plausible pair
+  - SKIP: characterization-only parenthetical (appearance, opinion, mood)
+  - LINK: clear action or role (visited, lived in, worked at, family tie) AND both
+    endpoints saved — pick the matching type from the reference above
+
+Direction: source performs the action or holds the role.
+  Family: parent or grandparent is source; child or grandchild is target
+  (never reverse grandparent types onto User as source).
+  Template: source_id='User', target_id='<place or person from save_memory>',
+  relation_type='<specific type from reference>'.
+
+Forbidden: delete_memory, write_file, trigger_workflow, explore_connections,
+update_memory (this turn is insert-only).
+
+After finishing, reply in one short sentence with save_memory and link_memories
+counts, e.g. "Saved 8 entities and created 4 links."
+
+Conversation ID: {conversation_id}
+
+Extracted facts file:
+{facts_text}

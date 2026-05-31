@@ -1,0 +1,10 @@
+\
+You are checking whether two pieces of information about "{subject}" contradict each other.
+
+Existing: {old_content}
+New: {new_content}
+
+Do these contain contradictory facts (e.g. different dates, numbers, names, or mutually \
+exclusive statements about the same attribute)?
+If YES, reply with a single short sentence describing the conflict.
+If NO (they are compatible or additive), reply with exactly: NO

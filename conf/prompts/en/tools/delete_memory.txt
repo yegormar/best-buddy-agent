@@ -1,0 +1,1 @@
+Delete a memory by id (requires approval).

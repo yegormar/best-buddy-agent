@@ -1,0 +1,8 @@
+# Ignore Python cache directories
+__pycache__/
+*.py[cod]
+*$py.class
+
+conf/best_buddy_agent.conf
+pytest.ini
+/.data/

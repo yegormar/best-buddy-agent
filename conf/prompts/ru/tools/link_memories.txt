@@ -1,0 +1,7 @@
+Связать два воспоминания типизированной связью.
+
+Передавайте имена субъектов сущностей (например, source_id='Bob', target_id='User',
+relation_type='father_of'). Имена разрешаются автоматически — не нужно
+сначала искать hex id. Используйте конкретные типы: mother_of, father_of,
+sibling_of, friend_of, works_at, lives_in, employed_by, prefers, enjoys.
+Никогда не используйте «related_to».
