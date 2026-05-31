@@ -1,0 +1,6 @@
+Search the user's Gmail inbox using Gmail query syntax (same as the Gmail search box).
+
+Examples: is:unread, from:alice@example.com newer_than:7d, has:attachment filename:pdf.
+
+Returns a JSON array of summaries (id, threadId, from, to, subject, date, snippet, labels).
+Use get_gmail_message with an id for the full body. There is no send-email tool — only drafts.

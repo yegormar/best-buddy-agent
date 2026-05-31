@@ -1,0 +1,5 @@
+[console_scripts]
+best-buddy-agent-chat = best_buddy_agent.cli:main
+best-buddy-agent-doctor = best_buddy_agent.startup_cli:main
+best-buddy-agent-gmail-auth = best_buddy_agent.gmail_auth_cli:main
+best-buddy-agent-telegram = best_buddy_agent.channels.telegram_bot:main

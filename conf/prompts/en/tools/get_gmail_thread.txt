@@ -1,0 +1,1 @@
+Fetch a full Gmail thread by threadId. Returns JSON with all messages in the thread (headers and body per message).

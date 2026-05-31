@@ -1,0 +1,5 @@
+Create a Gmail draft (does not send). Required: message (body), to (comma-separated addresses), subject.
+
+Optional: cc, bcc, attachments (comma-separated file paths under files_root or absolute paths).
+
+Pass multiple attachment paths in one call. Best Buddy cannot send email — only read and draft.

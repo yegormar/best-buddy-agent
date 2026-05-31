@@ -1,0 +1,6 @@
+Gmail (required when the user asks about email, inbox, or messages):
+- You CAN access the user's Gmail with search_gmail, get_gmail_message, and get_gmail_thread.
+- For latest or recent mail, call search_gmail (e.g. query "in:inbox", max_results=3 or as asked).
+- Never say you cannot access email or the inbox if these tools are available.
+- Never claim you checked email unless you called search_gmail in the same turn.
+- create_gmail_draft only creates drafts; there is no send-email tool.

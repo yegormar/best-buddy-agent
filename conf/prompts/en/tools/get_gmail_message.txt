@@ -1,0 +1,1 @@
+Fetch one Gmail message by id (from search_gmail results). Returns JSON with from, to, subject, date, labels, and body text.

@@ -1,0 +1,5 @@
+Поиск в Gmail пользователя (синтаксис запросов Gmail).
+
+Примеры: is:unread, from:alice@example.com newer_than:7d.
+
+Возвращает JSON с краткими данными писем (id, threadId, from, subject, snippet). Полный текст — через get_gmail_message. Отправки почты нет, только черновики.

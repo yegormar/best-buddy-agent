@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "best-buddy-agent"
+version = "0.1.0"
+description = "Best Buddy agent core: memory graph, context, workflows"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.26",
+    "networkx>=3.2",
+    "pydantic-ai-slim[openai]>=0.4",
+    "pydantic>=2.10",
+]
+
+[project.optional-dependencies]
+faiss = ["faiss-cpu>=1.8"]
+reliability = [
+    "pydantic-deep>=0.3",
+    "summarization-pydantic-ai>=0.1",
+]
+dev = ["pytest>=8.2"]
+telegram = ["python-telegram-bot>=21.0"]
+gmail = [
+    "google-api-python-client>=2.100",
+    "google-auth-oauthlib>=1.2",
+    "google-auth-httplib2>=0.2",
+]
+
+[project.scripts]
+best-buddy-agent-chat = "best_buddy_agent.cli:main"
+best-buddy-agent-telegram = "best_buddy_agent.channels.telegram_bot:main"
+best-buddy-agent-gmail-auth = "best_buddy_agent.gmail_auth_cli:main"
+best-buddy-agent-doctor = "best_buddy_agent.startup_cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "."]
+markers = [
+    "ollama: live Ollama integration (set BEST_BUDDY_AGENT_OLLAMA_TEST=1)",
+    "telegram: live Telegram bot (set TELEGRAM_BOT_TOKEN and TELEGRAM_ALLOWED_USER_ID)",
+]

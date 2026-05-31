@@ -1,0 +1,81 @@
+# Best Buddy Agent configuration
+
+[llm]
+# LLM server address (hostname or IP)
+llm_host = localhost
+
+# LLM server port (default Ollama port is 11434)
+llm_port = 11434
+
+# Installed Ollama model name (must match `ollama list` on llm_host)
+llm_model = qwen3.5:27b
+
+# Keep model loaded between requests (e.g. 5m, 30m, -1)
+llm_keep_alive = 5m
+
+# Sampling controls
+llm_temperature = 0.7
+llm_top_p = 0.9
+
+# Context window in tokens. Accepts integer or K suffix (8K, 128K)
+llm_num_ctx = 32K
+
+# false = non-thinking mode (faster). Uses Thinking(effort=False) for all models.
+# Qwen3: also sets openai_reasoning_effort=none on Ollama /v1. Qwen3.5: effort=none is
+# skipped (it breaks tools on Ollama); only Thinking(effort=False) applies.
+llm_think = false
+
+# Optional: override only the live agent system prompt (path relative to this conf file).
+# agent_system_prompt_file = prompts/en/agent_system.txt
+
+[prompts]
+# Language subdirectory under conf/prompts/ (e.g. en, ru). All LLM prompts load from there.
+language = en
+
+[tools]
+# Current tool router scope is intentionally limited to read-only file access.
+# Paths are resolved relative to this config file unless absolute.
+files_root = ..
+
+# Max orchestrator tool iterations per user turn.
+max_tool_iterations = 4
+
+[logging]
+# Enable detailed trace logging for debugging slow responses.
+enabled = false
+
+# Required when enabled=true. Relative paths resolve from this config folder.
+# file = ../.data/agent-trace.log
+
+# Include full orchestrator prompts and LLM prompts in the trace log.
+log_prompts = true
+
+# Include full model outputs, tool results, and final responses in the trace log.
+log_responses = true
+
+# Optional (default true when logging enabled):
+# log_message_history = true
+# log_capability_events = true
+# log_tool_args = true
+
+# Log exact HTTP JSON to/from Ollama POST /v1/chat/completions (requires enabled + file).
+# log_llm_wire = true
+
+[agent]
+# Name used when talking to the user (CLI prefix and system prompt). Default: BB
+# assistant_name = BB
+
+# Fail at agent build if reliability extras are required but missing
+# reliability_required = false
+
+[telegram]
+# Telegram channel (best-buddy-agent-telegram). Prefer env vars for secrets.
+# enabled = false
+# bot_token =
+# allowed_user_id =
+
+[gmail]
+# Gmail read + drafts only (no send). Run: best-buddy-agent-gmail-auth
+# enabled = false
+# credentials_path = ../.data/gmail/credentials.json
+# token_path = ../.data/gmail/token.json
