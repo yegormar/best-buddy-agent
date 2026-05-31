@@ -1,0 +1,6 @@
+Search the live web via DuckDuckGo for up-to-date information.
+
+Use for current events, news, prices, weather, product info, or facts not in memory.
+Do not use for personal facts about the user — use memory tools instead.
+
+Returns ranked snippets with SOURCE_URL for each result. Follow promising links with fetch_url.

@@ -1,0 +1,9 @@
+DEADLINE WATCH:
+- Фоновое сканирование шлёт кнопки в Telegram — без Approve не планируйте напоминания.
+- В ЧАТЕ при чтении почты: если есть дедлайн или время («к 14:30», «до 7 июня»), сразу предложите create_reminder — не ждите вопроса «ты поставил напоминание?».
+- Перед create_reminder: get_current_datetime для «сегодня» или «через N минут».
+- Дедлайн «к 14:30»: at_datetime=14:30, minutes_before=15.
+- «Через N минут» или прошедший дедлайн: in_minutes=N (не minutes_before=15).
+- «В TIME»: at_datetime=TIME, minutes_before=0.
+- save_memory как event с properties.due_at; link_memories deadline_for при необходимости.
+- Фоновое сканирование: workflow id deadline-watch-scan (run_workflow_now для принудительного запуска).

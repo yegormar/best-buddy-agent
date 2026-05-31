@@ -1,0 +1,1 @@
+Удалить workflow по workflow_id.

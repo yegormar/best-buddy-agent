@@ -1,0 +1,1 @@
+Search Google Calendar events between min_datetime and max_datetime (YYYY-MM-DD HH:MM:SS).

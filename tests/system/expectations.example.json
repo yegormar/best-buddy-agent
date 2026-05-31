@@ -1,0 +1,19 @@
+{
+  "memory": {
+    "age_question": "How old am I?",
+    "expected_age": "17",
+    "facts_question": "List the main facts you know about me. Be concise — name, age, school, birthday, hobbies.",
+    "must_contain": ["Yegor", "17", "Algonquin"]
+  },
+  "gmail": {
+    "draft_to": "YOUR_EMAIL@gmail.com",
+    "draft_body": "Automated system test draft. Do not send.",
+    "subject": "[BB-SYSTEM-TEST] smoke",
+    "cleanup": true
+  },
+  "scheduling": {
+    "agent_prompt": "Call create_reminder now with: name \"System test\", message \"BB system test ping\", in_minutes 2. Use the tool immediately — do not ask for confirmation.",
+    "reminder_message": "BB system test ping",
+    "engine_in_minutes": 1
+  }
+}

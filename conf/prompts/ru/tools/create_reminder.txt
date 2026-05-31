@@ -1,0 +1,10 @@
+Создать разовое напоминание в Telegram. Предпочтительнее create_workflow для «напомни в X».
+
+Параметры: name, message, at_datetime (ISO 8601 с часовым поясом), minutes_before (по умолчанию 15 — только для ДЕДЛАЙНА), in_minutes (для «через 5 минут» — без at_datetime).
+
+Примеры:
+- «к 14:30»: at_datetime=14:30, minutes_before=15
+- «через 5 минут»: in_minutes=5
+- «в 14:25»: at_datetime=14:25, minutes_before=0
+
+Сначала get_current_datetime для «сегодня» или относительного времени.

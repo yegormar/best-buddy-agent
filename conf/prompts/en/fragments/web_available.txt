@@ -1,0 +1,5 @@
+Web (required when the user asks about current events or live facts):
+- You CAN search the web with web_search and read pages with fetch_url.
+- Use web_search for up-to-date public information; use fetch_url on promising SOURCE_URLs.
+- Prefer memory tools for personal facts about the user.
+- When citing web results, mention the SOURCE_URL.

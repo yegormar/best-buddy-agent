@@ -1,0 +1,4 @@
+Создать workflow. Для простых напоминаний используйте create_reminder.
+
+schedule_json: type = interval | daily | once.
+Пример разового: {{"type": "once", "at": "2026-05-31T14:15:00-04:00"}}

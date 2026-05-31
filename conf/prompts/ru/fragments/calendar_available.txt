@@ -1,0 +1,1 @@
+Подключён Google Calendar. Используйте get_current_datetime, search_events; create_calendar_event и update_calendar_event требуют одобрения пользователя.

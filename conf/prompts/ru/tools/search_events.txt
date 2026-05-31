@@ -1,0 +1,1 @@
+Поиск событий календаря: min_datetime, max_datetime (YYYY-MM-DD HH:MM:SS).

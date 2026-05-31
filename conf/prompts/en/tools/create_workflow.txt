@@ -1,0 +1,12 @@
+Create a workflow. Prefer create_reminder for simple one-shot reminders.
+
+schedule_json must be JSON with type one of: interval, daily, once.
+
+Examples:
+- One-shot reminder: {{"type": "once", "at": "2026-05-31T14:15:00-04:00"}}
+- Every 15 min: {{"type": "interval", "seconds": 900}}
+- Daily 9am: {{"type": "daily", "time": "09:00"}}
+
+INVALID: type "at", bare time "14:30", cron strings.
+
+For notify-only reminders: notify_only=true, steps_json=[], notify_message="your text".

@@ -1,0 +1,15 @@
+Create a one-shot Telegram reminder. Preferred over create_workflow for "remind me at X".
+
+Parameters:
+- name: short label (e.g. "Dinner prep")
+- message: notification body shown on Telegram
+- at_datetime: deadline or exact fire time (ISO 8601 WITH timezone). Use get_current_datetime first.
+- minutes_before: default 15 — only when at_datetime is a DEADLINE (e.g. email says "by 14:30"). Subtracts from at_datetime.
+- in_minutes: for "remind me in 5 minutes" — set this (e.g. 5) and leave at_datetime empty. Do NOT also use minutes_before.
+
+Examples:
+- Email deadline "prepare dinner by 14:30": at_datetime=14:30 today, minutes_before=15
+- "Remind me in 5 minutes": in_minutes=5 (no at_datetime)
+- "Remind me at 14:25": at_datetime=14:25 today, minutes_before=0
+
+Requires best-buddy-agent-telegram running. Does not need user approval if they already said yes.

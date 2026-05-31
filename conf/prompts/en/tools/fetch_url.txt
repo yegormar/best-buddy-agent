@@ -1,0 +1,4 @@
+Fetch and read the readable text of a webpage. Requires a full http:// or https:// URL.
+
+Use after web_search when you need the full page, or when the user provides a link.
+Returns SOURCE_URL plus extracted text (may be truncated).
