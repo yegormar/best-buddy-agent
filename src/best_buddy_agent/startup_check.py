@@ -180,6 +180,91 @@ def _check_gmail(config: AgentConfig) -> list[CheckResult]:
     return results
 
 
+def _check_calendar(config: AgentConfig) -> list[CheckResult]:
+    cal = config.calendar
+    if not cal.enabled:
+        return [CheckResult("calendar", True, "disabled")]
+    results: list[CheckResult] = []
+    if not cal.credentials_path.is_file():
+        results.append(CheckResult("calendar_credentials", False, f"missing {cal.credentials_path}"))
+    else:
+        results.append(CheckResult("calendar_credentials", True, str(cal.credentials_path)))
+    if not cal.token_path.is_file():
+        results.append(
+            CheckResult(
+                "calendar_token",
+                False,
+                f"missing {cal.token_path} — run best-buddy-agent-calendar-auth",
+            )
+        )
+    else:
+        from . import calendar_client as cc
+
+        status, detail = cc.check_token_health(cal.token_path)
+        ok = status in ("valid", "refreshed")
+        results.append(CheckResult("calendar_token", ok, f"{status}: {detail}"))
+    ok = cal.is_ready() and all(r.ok for r in results)
+    results.append(
+        CheckResult(
+            "calendar",
+            ok,
+            "ready" if ok else "enabled but not ready",
+        )
+    )
+    return results
+
+
+def _check_deadline_watch(
+    config: AgentConfig,
+    *,
+    profile: str,
+    conf_path: str | Path | None = None,
+) -> list[CheckResult]:
+    dw = config.deadline_watch
+    if not dw.enabled:
+        return [CheckResult("deadline_watch", True, "disabled")]
+    results: list[CheckResult] = []
+    if not config.gmail.is_ready():
+        results.append(
+            CheckResult(
+                "deadline_watch_gmail",
+                False,
+                "Gmail must be configured for inbox scanning",
+            )
+        )
+    else:
+        results.append(CheckResult("deadline_watch_gmail", True, "Gmail ready"))
+    if profile in ("telegram", "all"):
+        tg = load_telegram_settings(str(conf_path) if conf_path else None)
+        if not tg.is_configured():
+            results.append(
+                CheckResult(
+                    "deadline_watch_telegram",
+                    False,
+                    "Telegram required for proactive deadline proposals",
+                )
+            )
+        else:
+            results.append(CheckResult("deadline_watch_telegram", True, "Telegram configured"))
+    else:
+        results.append(
+            CheckResult(
+                "deadline_watch_telegram",
+                True,
+                "run best-buddy-agent-telegram for proactive notifications",
+            )
+        )
+    ok = all(r.ok for r in results)
+    results.append(
+        CheckResult(
+            "deadline_watch",
+            ok,
+            "ready" if ok else "enabled but not fully ready",
+        )
+    )
+    return results
+
+
 def _check_reliability(config: AgentConfig) -> CheckResult:
     if not config.reliability_required:
         return CheckResult("reliability", True, "not required")
@@ -279,12 +364,15 @@ def run_startup_checks(
         _check_files_root(config),
         _check_sqlite_db("memory_db", "memory.db"),
         _check_sqlite_db("threads_db", "threads.db"),
+        _check_sqlite_db("workflows_db", "workflows.db"),
         _check_logging(config),
         _check_ollama(config, timeout_sec=ollama_timeout_sec),
         _check_memory_index(),
         _check_reliability(config),
     ]
     results.extend(_check_gmail(config))
+    results.extend(_check_calendar(config))
+    results.extend(_check_deadline_watch(config, profile=profile, conf_path=conf_path))
 
     if profile in ("telegram", "all"):
         tg = load_telegram_settings(conf_path)

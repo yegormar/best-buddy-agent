@@ -6,3 +6,13 @@ __pycache__/
 conf/best_buddy_agent.conf
 pytest.ini
 /.data/
+
+.venv/
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+
+# Live system smoke tests — personal expectations
+tests/system/expectations.json
+tests/system/expectations.local.json

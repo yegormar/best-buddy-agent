@@ -90,9 +90,11 @@ def _resolve_entity(name_or_id: str) -> dict | None:
 
 
 def search_memory(query: str, top_k: int = 8) -> str:
-    if not query.strip():
-        raise ToolError("query is required")
     top_k = max(1, min(top_k, 20))
+    if not query.strip():
+        # Small models often call search_memory with query="" for broad questions;
+        # list everything instead of failing the turn.
+        return list_memories(limit=top_k)
     return recall_memories(query.strip(), top_k=top_k).format_for_tool()
 
 

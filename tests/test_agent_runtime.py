@@ -31,3 +31,16 @@ def test_read_file_tool_direct(tmp_path: Path):
     target.write_text("tool ok", encoding="utf-8")
     out = fs.read_file(cfg, str(target.name))
     assert "tool ok" in out
+
+
+def test_trace_tool_invoke_returns_tool_error_message(tmp_path: Path):
+    from best_buddy_agent import agent_runtime
+
+    cfg = load_config(str(_write_conf(tmp_path)))
+    out = agent_runtime._trace_tool_invoke(
+        cfg,
+        "read_file",
+        {"path": ""},
+        lambda: fs.read_file(cfg, ""),
+    )
+    assert out == "path is required"

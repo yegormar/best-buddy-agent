@@ -29,7 +29,7 @@ class CitiesResponse(BaseModel):
 
 
 model = OllamaModel(
-    "granite4.1:3b",
+    "gemma4:26b",
     provider=OllamaProvider(base_url="http://ubuntu-llm:11434/v1"),
     settings={"temperature": 0.1},
 )

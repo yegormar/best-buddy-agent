@@ -44,6 +44,7 @@
 - Работа: works_on, manages, member_of, part_of, employed_by
 - Предпочтения: prefers, enjoys, dislikes, interested_in
 - Время: deadline_for, scheduled_for, started_on
+- Для дедлайнов сохраняйте ISO datetime в properties.due_at у сущностей event
 - Знания: studies, proficient_in, certified_in, learning
 - Медиа: reading, watching, recommends, authored
 - Общее: owns

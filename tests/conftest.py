@@ -12,8 +12,12 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-_TEST_DATA_DIR = tempfile.mkdtemp(prefix="best-buddy-agent-tests-")
-os.environ["BEST_BUDDY_AGENT_DATA_DIR"] = _TEST_DATA_DIR
+# System tests use the real ~/.best_buddy_agent data dir (memory, Gmail tokens, workflows).
+if os.environ.get("BEST_BUDDY_AGENT_SYSTEM_TEST") == "1":
+    _TEST_DATA_DIR = None
+else:
+    _TEST_DATA_DIR = tempfile.mkdtemp(prefix="best-buddy-agent-tests-")
+    os.environ["BEST_BUDDY_AGENT_DATA_DIR"] = _TEST_DATA_DIR
 
 
 def copy_prompt_bundle(dest_conf_dir: Path, *, language: str = "en") -> Path:
@@ -34,6 +38,7 @@ def write_test_conf(
     llm_num_ctx: str = "8192",
     extra_llm: str = "",
     extra_logging: str = "",
+    extra_web: str = "",
 ) -> Path:
     copy_prompt_bundle(tmp_path, language=language)
     override_line = ""
@@ -55,6 +60,8 @@ llm_num_ctx = {llm_num_ctx}
     logging_block = extra_logging.strip() if extra_logging.strip() else "enabled = false"
     if "file = logs/" in logging_block:
         (tmp_path / "logs").mkdir(exist_ok=True)
+    web_block = extra_web.strip()
+    web_section = f"\n\n[web]\n{web_block}" if web_block else ""
     conf = tmp_path / "agent.conf"
     conf.write_text(
         f"""
@@ -67,6 +74,7 @@ language = {language}
 [tools]
 files_root = .
 max_tool_iterations = 4
+{web_section}
 
 [logging]
 {logging_block}
@@ -110,12 +118,29 @@ def pytest_configure(config):
         "markers",
         "ollama: live Ollama integration (set BEST_BUDDY_AGENT_OLLAMA_TEST=1)",
     )
+    config.addinivalue_line(
+        "markers",
+        "system: live system smoke tests (set BEST_BUDDY_AGENT_SYSTEM_TEST=1)",
+    )
+    config.addinivalue_line(
+        "markers",
+        "gmail: live Gmail integration (requires OAuth token and [gmail] enabled)",
+    )
 
 
 def pytest_collection_modifyitems(config, items):
-    if os.environ.get("BEST_BUDDY_AGENT_OLLAMA_TEST") == "1":
-        return
-    skip = pytest.mark.skip(reason="set BEST_BUDDY_AGENT_OLLAMA_TEST=1 to run live Ollama tests")
-    for item in items:
-        if "ollama" in item.keywords:
-            item.add_marker(skip)
+    if os.environ.get("BEST_BUDDY_AGENT_OLLAMA_TEST") != "1":
+        skip_ollama = pytest.mark.skip(
+            reason="set BEST_BUDDY_AGENT_OLLAMA_TEST=1 to run live Ollama tests"
+        )
+        for item in items:
+            if "ollama" in item.keywords:
+                item.add_marker(skip_ollama)
+
+    if os.environ.get("BEST_BUDDY_AGENT_SYSTEM_TEST") != "1":
+        skip_system = pytest.mark.skip(
+            reason="set BEST_BUDDY_AGENT_SYSTEM_TEST=1 to run system smoke tests"
+        )
+        for item in items:
+            if "system" in item.keywords:
+                item.add_marker(skip_system)

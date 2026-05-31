@@ -13,6 +13,8 @@ dependencies = [
     "networkx>=3.2",
     "pydantic-ai-slim[openai]>=0.4",
     "pydantic>=2.10",
+    "ddgs>=9.0",
+    "httpx>=0.27",
 ]
 
 [project.optional-dependencies]
@@ -28,12 +30,19 @@ gmail = [
     "google-auth-oauthlib>=1.2",
     "google-auth-httplib2>=0.2",
 ]
+calendar = [
+    "google-api-python-client>=2.100",
+    "google-auth-oauthlib>=1.2",
+    "google-auth-httplib2>=0.2",
+]
 
 [project.scripts]
 best-buddy-agent-chat = "best_buddy_agent.cli:main"
 best-buddy-agent-telegram = "best_buddy_agent.channels.telegram_bot:main"
 best-buddy-agent-gmail-auth = "best_buddy_agent.gmail_auth_cli:main"
+best-buddy-agent-calendar-auth = "best_buddy_agent.calendar_auth_cli:main"
 best-buddy-agent-doctor = "best_buddy_agent.startup_cli:main"
+best-buddy-agent-system-test = "best_buddy_agent.system_test_cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -44,4 +53,6 @@ pythonpath = ["src", "."]
 markers = [
     "ollama: live Ollama integration (set BEST_BUDDY_AGENT_OLLAMA_TEST=1)",
     "telegram: live Telegram bot (set TELEGRAM_BOT_TOKEN and TELEGRAM_ALLOWED_USER_ID)",
+    "system: live system smoke tests (set BEST_BUDDY_AGENT_SYSTEM_TEST=1)",
+    "gmail: live Gmail integration (requires OAuth token and [gmail] enabled)",
 ]

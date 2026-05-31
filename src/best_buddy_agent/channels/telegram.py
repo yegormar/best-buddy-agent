@@ -208,6 +208,7 @@ async def handle_callback(
     update: Any,
     context: Any,
     *,
+    config: AgentConfig,
     allowed_user_id: int,
 ) -> None:
     query = update.callback_query
@@ -221,6 +222,18 @@ async def handle_callback(
 
     chat_id = update.effective_chat.id
     data = query.data or ""
+
+    if data.startswith(("deadline:approve:", "deadline:approve_cal:", "deadline:dismiss:")):
+        from ..deadline_watch.scanner import handle_deadline_callback
+
+        try:
+            msg = handle_deadline_callback(data, config)
+        except Exception as exc:
+            log.exception("Deadline callback failed: %s", exc)
+            await query.edit_message_text(f"Error: {exc}")
+            return
+        await query.edit_message_text(msg)
+        return
 
     if data not in {CALLBACK_APPROVE, CALLBACK_DENY}:
         await query.edit_message_text("Unknown action.")
@@ -337,13 +350,37 @@ def build_application(
     allowed = settings.allowed_user_id
     assert allowed is not None
 
-    app = Application.builder().token(settings.bot_token).build()
+    async def _post_init(application: Any) -> None:
+        import asyncio
+
+        from ..notifications.telegram_notifier import register_telegram_notifier
+        from ..services.bootstrap import start_background_services
+
+        register_telegram_notifier(
+            application.bot,
+            asyncio.get_running_loop(),
+            chat_id=int(allowed),
+        )
+        start_background_services(config, settings)
+
+    async def _post_shutdown(_application: Any) -> None:
+        from ..services.bootstrap import stop_background_services
+
+        stop_background_services()
+
+    app = (
+        Application.builder()
+        .token(settings.bot_token)
+        .post_init(_post_init)
+        .post_shutdown(_post_shutdown)
+        .build()
+    )
 
     async def on_message(update: Any, context: Any) -> None:
         await handle_message(update, context, config=config, allowed_user_id=allowed)
 
     async def on_callback(update: Any, context: Any) -> None:
-        await handle_callback(update, context, allowed_user_id=allowed)
+        await handle_callback(update, context, config=config, allowed_user_id=allowed)
 
     async def on_start(update: Any, context: Any) -> None:
         await cmd_start(update, context, config=config, allowed_user_id=allowed)

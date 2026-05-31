@@ -170,3 +170,40 @@ def test_scheduler_dispatches_due_workflow():
 
     runs = wf.get_run_history(wid)
     assert runs and runs[0]["status"] in {"completed", "running"}
+
+
+def test_scheduler_dispatches_timezone_aware_once(tmp_path, monkeypatch):
+    from zoneinfo import ZoneInfo
+
+    monkeypatch.setenv("BEST_BUDDY_AGENT_DATA_DIR", str(tmp_path))
+    import importlib
+
+    from best_buddy_agent import workflow_engine as wf
+
+    importlib.reload(wf)
+
+    tz = ZoneInfo("America/Toronto")
+    past = datetime.now(tz) - timedelta(minutes=1)
+    wid = wf.create_workflow(
+        "tz-once",
+        steps=[],
+        schedule={"type": "once", "at": past.isoformat()},
+        enabled=True,
+        notify_only=True,
+        notify_message="tz ping",
+        allow_past_once=True,
+    )
+    c = wf._conn()
+    c.execute("UPDATE workflows SET next_run_at = ? WHERE id = ?", (past.isoformat(), wid))
+    c.commit()
+    c.close()
+
+    notes: list[str] = []
+    dispatched = wf.run_scheduler_once(lambda s: "", notifier=notes.append)
+    assert dispatched >= 1
+
+    import time
+
+    time.sleep(0.3)
+    assert notes == ["tz ping"]
+    assert wf.get_workflow(wid)["enabled"] is False

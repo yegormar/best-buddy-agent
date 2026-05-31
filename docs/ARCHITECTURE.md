@@ -37,7 +37,9 @@ flowchart LR
 | `read_file`, `list_files` | no |
 | `search_memory`, `save_memory`, `list_memories`, `get_memory` | no |
 | `delete_memory`, `write_file` | yes (`requires_approval`) |
-| `workflow_run_status`, `trigger_workflow` | no |
+| `workflow_run_status`, `trigger_workflow`, `list_workflows`, `create_workflow`, `update_workflow`, `delete_workflow`, `run_workflow_now` | no |
+| `get_current_datetime`, `search_events` | no (calendar) |
+| `create_calendar_event`, `update_calendar_event` | yes |
 
 ## Memory (unchanged graph; see recall note)
 
@@ -69,6 +71,9 @@ Optional: install real embeddings later (e.g. optional extra) and rebuild the FA
 ## Workflows
 
 - `workflow_engine.py`: typed steps; **prompt** steps use `make_workflow_step_executor()` → `run_turn()`
+- Scheduler started by Telegram bot via `services/bootstrap.py`
+- `notify_only` workflows and `function` steps for deterministic scans
+- Deadline Watch: `deadline_watch/` + `docs/DEADLINE_WATCH.md`
 - `workflow_models.py`: `WorkflowPlan` for NL workflow creation (structured output)
 - **approval** steps use workflow-level `approval_resolver` (unchanged)
 

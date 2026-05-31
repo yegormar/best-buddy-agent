@@ -26,9 +26,11 @@ from .memory_layer import recall_context_for_turn_with_meta
 from .model_factory import agent_config_fingerprint, build_ollama_model
 from .threads import append_turn_messages, load_thread_message_history, thread_conversation_rows
 from .tools import filesystem as fs_tools
+from .tools import calendar_tools
 from .tools import gmail_tools as gmail_tools
 from .tools import memory_tools as mem_tools
 from .tools import workflow_tools as wf_tools
+from .tools import web_tools
 
 TurnResult = str | InterruptResult
 
@@ -81,6 +83,15 @@ def _compose_instructions(
         memory_recall_header=prompts.get("fragments/memory_recall_header"),
     )
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    if cfg.deadline_watch.enabled:
+        try:
+            from zoneinfo import ZoneInfo
+
+            now = datetime.now(ZoneInfo(cfg.deadline_watch.timezone)).strftime(
+                "%Y-%m-%d %H:%M:%S %Z"
+            )
+        except Exception:
+            pass
     parts = [
         prompts.format(
             "fragments/assistant_identity",
@@ -99,6 +110,17 @@ def _compose_instructions(
         )
     if cfg.gmail.is_ready():
         parts.append(prompts.get("fragments/gmail_available"))
+    if cfg.web.enabled:
+        parts.append(prompts.get("fragments/web_available"))
+    if cfg.calendar.is_ready():
+        parts.append(prompts.get("fragments/calendar_available"))
+    elif cfg.deadline_watch.enabled:
+        parts.append(
+            "Reminders/time: call get_current_datetime before scheduling; "
+            f"timezone is {cfg.deadline_watch.timezone}."
+        )
+    if cfg.deadline_watch.enabled:
+        parts.append(prompts.get("fragments/deadline_watch"))
     text = "\n\n".join(p for p in parts if p.strip())
     return text, memory_block, recall_meta
 
@@ -124,9 +146,11 @@ def _trace_tool_invoke(
         mem_tools.ToolError,
         wf_tools.ToolError,
         gmail_tools.ToolError,
+        web_tools.ToolError,
     ) as exc:
-        agent_trace.trace_tool_result(config, name, str(exc), error=True)
-        raise
+        message = str(exc)
+        agent_trace.trace_tool_result(config, name, message, error=True)
+        return message
 
 
 def _bind_tool(
@@ -280,19 +304,135 @@ def _register_tools(
 
     def trigger_workflow(ctx: RunContext[BestBuddyDeps], workflow_id: str) -> str:
         from . import workflow_engine as wf
+        from .notifications.telegram_notifier import make_notifier
 
         def _run() -> str:
             row = wf.get_workflow(workflow_id.strip())
             if not row:
                 raise wf_tools.ToolError(f"Unknown workflow: {workflow_id}")
             run_id = wf.run_workflow(
-                workflow_id.strip(), make_workflow_step_executor(ctx.deps.config)
+                workflow_id.strip(),
+                make_workflow_step_executor(ctx.deps.config),
+                notifier=make_notifier(),
             )
             return json.dumps({"workflow_id": workflow_id, "run_id": run_id})
 
         return _trace_tool_invoke(
             ctx.deps.config,
             "trigger_workflow",
+            {"workflow_id": workflow_id},
+            _run,
+        )
+
+    def list_workflows(ctx: RunContext[BestBuddyDeps]) -> str:
+        return _trace_tool_invoke(
+            ctx.deps.config,
+            "list_workflows",
+            {},
+            wf_tools.list_workflows,
+        )
+
+    def create_workflow(
+        ctx: RunContext[BestBuddyDeps],
+        name: str,
+        steps_json: str = "[]",
+        schedule_json: str = "",
+        notify_only: bool = False,
+        notify_message: str = "",
+        enabled: bool = True,
+    ) -> str:
+        return _trace_tool_invoke(
+            ctx.deps.config,
+            "create_workflow",
+            {"name": name},
+            lambda: wf_tools.create_workflow_tool(
+                name,
+                steps_json=steps_json,
+                schedule_json=schedule_json,
+                notify_only=notify_only,
+                notify_message=notify_message,
+                enabled=enabled,
+            ),
+        )
+
+    def create_reminder(
+        ctx: RunContext[BestBuddyDeps],
+        name: str,
+        message: str,
+        at_datetime: str = "",
+        minutes_before: int = 15,
+        in_minutes: int | None = None,
+    ) -> str:
+        return _trace_tool_invoke(
+            ctx.deps.config,
+            "create_reminder",
+            {
+                "name": name,
+                "at_datetime": at_datetime,
+                "minutes_before": minutes_before,
+                "in_minutes": in_minutes,
+            },
+            lambda: wf_tools.create_reminder_tool(
+                name,
+                message,
+                at_datetime,
+                minutes_before=minutes_before,
+                in_minutes=in_minutes,
+                timezone=ctx.deps.config.deadline_watch.timezone,
+            ),
+        )
+
+    def update_workflow(
+        ctx: RunContext[BestBuddyDeps],
+        workflow_id: str,
+        name: str = "",
+        steps_json: str = "",
+        schedule_json: str = "",
+        notify_only: bool | None = None,
+        notify_message: str = "",
+        enabled: bool | None = None,
+    ) -> str:
+        return _trace_tool_invoke(
+            ctx.deps.config,
+            "update_workflow",
+            {"workflow_id": workflow_id},
+            lambda: wf_tools.update_workflow_tool(
+                workflow_id,
+                name=name,
+                steps_json=steps_json,
+                schedule_json=schedule_json,
+                notify_only=notify_only,
+                notify_message=notify_message,
+                enabled=enabled,
+            ),
+        )
+
+    def delete_workflow(ctx: RunContext[BestBuddyDeps], workflow_id: str) -> str:
+        return _trace_tool_invoke(
+            ctx.deps.config,
+            "delete_workflow",
+            {"workflow_id": workflow_id},
+            lambda: wf_tools.delete_workflow_tool(workflow_id),
+        )
+
+    def run_workflow_now(ctx: RunContext[BestBuddyDeps], workflow_id: str) -> str:
+        from . import workflow_engine as wf
+        from .notifications.telegram_notifier import make_notifier
+
+        def _run() -> str:
+            wid = workflow_id.strip()
+            if not wf.get_workflow(wid):
+                raise wf_tools.ToolError(f"Unknown workflow: {wid}")
+            run_id = wf.run_workflow(
+                wid,
+                make_workflow_step_executor(ctx.deps.config),
+                notifier=make_notifier(),
+            )
+            return json.dumps({"workflow_id": wid, "run_id": run_id})
+
+        return _trace_tool_invoke(
+            ctx.deps.config,
+            "run_workflow_now",
             {"workflow_id": workflow_id},
             _run,
         )
@@ -309,6 +449,12 @@ def _register_tools(
         ("explore_connections", explore_connections),
         ("workflow_run_status", workflow_run_status),
         ("trigger_workflow", trigger_workflow),
+        ("list_workflows", list_workflows),
+        ("create_workflow", create_workflow),
+        ("create_reminder", create_reminder),
+        ("update_workflow", update_workflow),
+        ("delete_workflow", delete_workflow),
+        ("run_workflow_now", run_workflow_now),
     ):
         _bind_tool(agent, prompts, name, fn)
 
@@ -379,6 +525,141 @@ def _register_tools(
             create_gmail_draft,
             requires_approval=True,
         )
+
+    if config.calendar.is_ready():
+        def get_current_datetime(ctx: RunContext[BestBuddyDeps]) -> str:
+            return _trace_tool_invoke(
+                ctx.deps.config,
+                "get_current_datetime",
+                {},
+                lambda: calendar_tools.get_current_datetime(ctx.deps.config),
+            )
+
+        def search_events(
+            ctx: RunContext[BestBuddyDeps],
+            min_datetime: str,
+            max_datetime: str,
+            max_results: int = 10,
+            query: str = "",
+        ) -> str:
+            return _trace_tool_invoke(
+                ctx.deps.config,
+                "search_events",
+                {"min_datetime": min_datetime, "max_datetime": max_datetime},
+                lambda: calendar_tools.search_events(
+                    ctx.deps.config,
+                    min_datetime,
+                    max_datetime,
+                    max_results=max_results,
+                    query=query,
+                ),
+            )
+
+        def create_calendar_event(
+            ctx: RunContext[BestBuddyDeps],
+            summary: str,
+            start_datetime: str,
+            end_datetime: str = "",
+            description: str = "",
+            location: str = "",
+            calendar_id: str = "primary",
+        ) -> str:
+            return _trace_tool_invoke(
+                ctx.deps.config,
+                "create_calendar_event",
+                {"summary": summary, "start_datetime": start_datetime},
+                lambda: calendar_tools.create_calendar_event(
+                    ctx.deps.config,
+                    summary,
+                    start_datetime,
+                    end_datetime=end_datetime,
+                    description=description,
+                    location=location,
+                    calendar_id=calendar_id,
+                ),
+            )
+
+        def update_calendar_event(
+            ctx: RunContext[BestBuddyDeps],
+            event_id: str,
+            summary: str = "",
+            start_datetime: str = "",
+            end_datetime: str = "",
+            description: str = "",
+            calendar_id: str = "primary",
+        ) -> str:
+            return _trace_tool_invoke(
+                ctx.deps.config,
+                "update_calendar_event",
+                {"event_id": event_id},
+                lambda: calendar_tools.update_calendar_event(
+                    ctx.deps.config,
+                    event_id,
+                    summary=summary,
+                    start_datetime=start_datetime,
+                    end_datetime=end_datetime,
+                    description=description,
+                    calendar_id=calendar_id,
+                ),
+            )
+
+        for name, fn in (
+            ("get_current_datetime", get_current_datetime),
+            ("search_events", search_events),
+        ):
+            _bind_tool(agent, prompts, name, fn)
+        _bind_tool(
+            agent,
+            prompts,
+            "create_calendar_event",
+            create_calendar_event,
+            requires_approval=True,
+        )
+        _bind_tool(
+            agent,
+            prompts,
+            "update_calendar_event",
+            update_calendar_event,
+            requires_approval=True,
+        )
+
+    elif config.deadline_watch.enabled:
+
+        def get_current_datetime(ctx: RunContext[BestBuddyDeps]) -> str:
+            return _trace_tool_invoke(
+                ctx.deps.config,
+                "get_current_datetime",
+                {},
+                lambda: calendar_tools.get_current_datetime(ctx.deps.config),
+            )
+
+        _bind_tool(agent, prompts, "get_current_datetime", get_current_datetime)
+
+
+    if config.web.enabled:
+        def web_search(ctx: RunContext[BestBuddyDeps], query: str, max_results: int = 8) -> str:
+            return _trace_tool_invoke(
+                ctx.deps.config,
+                "web_search",
+                {"query": query, "max_results": max_results},
+                lambda: web_tools.web_search(
+                    ctx.deps.config.web, query, max_results=max_results
+                ),
+            )
+
+        def fetch_url(ctx: RunContext[BestBuddyDeps], url: str) -> str:
+            return _trace_tool_invoke(
+                ctx.deps.config,
+                "fetch_url",
+                {"url": url},
+                lambda: web_tools.fetch_url(ctx.deps.config.web, url),
+            )
+
+        for name, fn in (
+            ("web_search", web_search),
+            ("fetch_url", fetch_url),
+        ):
+            _bind_tool(agent, prompts, name, fn)
 
 
 def build_agent(

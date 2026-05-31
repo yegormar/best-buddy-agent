@@ -36,6 +36,27 @@ _active_lock = threading.Lock()
 _scheduler_thread: threading.Thread | None = None
 _scheduler_stop = threading.Event()
 
+_function_registry: dict[str, Callable[[dict], str]] = {}
+_runtime_context: dict[str, Any] = {}
+
+
+def register_workflow_function(name: str, fn: Callable[[dict], str]) -> None:
+    _function_registry[name] = fn
+
+
+def set_workflow_runtime_context(ctx: dict[str, Any]) -> None:
+    global _runtime_context
+    _runtime_context = dict(ctx)
+
+
+def clear_workflow_runtime_context() -> None:
+    global _runtime_context
+    _runtime_context = {}
+
+
+def get_workflow_runtime_context() -> dict[str, Any]:
+    return dict(_runtime_context)
+
 
 class WorkflowError(Exception):
     """Raised for workflow validation/execution errors."""
@@ -62,7 +83,10 @@ def _conn() -> sqlite3.Connection:
             next_run_at TEXT,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
-            last_run TEXT
+            last_run TEXT,
+            notify_only INTEGER DEFAULT 0,
+            notify_message TEXT DEFAULT '',
+            metadata_json TEXT DEFAULT '{}'
         )
         """
     )
@@ -122,6 +146,9 @@ def _conn() -> sqlite3.Connection:
         "ALTER TABLE workflow_runs ADD COLUMN steps_total INTEGER DEFAULT 0",
         "ALTER TABLE workflow_runs ADD COLUMN steps_done INTEGER DEFAULT 0",
         "ALTER TABLE workflow_runs ADD COLUMN state_json TEXT DEFAULT '{}'",
+        "ALTER TABLE workflows ADD COLUMN notify_only INTEGER DEFAULT 0",
+        "ALTER TABLE workflows ADD COLUMN notify_message TEXT DEFAULT ''",
+        "ALTER TABLE workflows ADD COLUMN metadata_json TEXT DEFAULT '{}'",
     ):
         try:
             conn.execute(sql)
@@ -131,7 +158,11 @@ def _conn() -> sqlite3.Connection:
     return conn
 
 
-def _normalize_schedule(schedule: dict | None) -> tuple[str | None, str | None, str | None]:
+def _normalize_schedule(
+    schedule: dict | None,
+    *,
+    allow_past_once: bool = False,
+) -> tuple[str | None, str | None, str | None]:
     """Return (schedule_type, schedule_value_json, next_run_at)."""
     if not schedule:
         return None, None, None
@@ -167,10 +198,12 @@ def _normalize_schedule(schedule: dict | None) -> tuple[str | None, str | None, 
         dt = datetime.fromisoformat(at)
     except ValueError as exc:
         raise WorkflowError("once schedule requires ISO datetime in 'at'") from exc
-    if dt <= now:
+    now_cmp = datetime.now(dt.tzinfo) if dt.tzinfo is not None else now
+    if dt <= now_cmp and not allow_past_once:
         raise WorkflowError("once schedule 'at' must be in the future")
     value = {"at": at}
-    return st, json.dumps(value), dt.isoformat()
+    next_run = dt.isoformat() if dt > now_cmp else (now_cmp + timedelta(seconds=2)).isoformat()
+    return st, json.dumps(value), next_run
 
 
 def _next_run_after(schedule_type: str | None, schedule_value_json: str | None, now: datetime) -> str | None:
@@ -194,10 +227,37 @@ def _next_run_after(schedule_type: str | None, schedule_value_json: str | None, 
     return None
 
 
+def _parse_iso_datetime(value: str) -> datetime:
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def _schedule_is_due(next_run_at: str, *, now: datetime | None = None) -> bool:
+    """True when next_run_at is in the past (timezone-aware compare when possible)."""
+    if not (next_run_at or "").strip():
+        return False
+    ref = now or datetime.now().astimezone()
+    try:
+        due = _parse_iso_datetime(next_run_at)
+    except ValueError:
+        return next_run_at <= ref.isoformat()
+    if due.tzinfo is None:
+        ref_cmp = ref.replace(tzinfo=None) if ref.tzinfo else ref
+        return due <= ref_cmp
+    if ref.tzinfo is None:
+        ref = ref.astimezone()
+    return due <= ref
+
+
 def _decode_workflow_row(row: sqlite3.Row) -> dict:
     d = dict(row)
     d["steps"] = json.loads(d.get("steps") or "[]")
     d["enabled"] = bool(d.get("enabled", 1))
+    d["notify_only"] = bool(d.get("notify_only", 0))
+    d["notify_message"] = d.get("notify_message") or ""
+    try:
+        d["metadata"] = json.loads(d.get("metadata_json") or "{}")
+    except json.JSONDecodeError:
+        d["metadata"] = {}
     d["schedule"] = (
         {"type": d["schedule_type"], **(json.loads(d.get("schedule_value") or "{}"))}
         if d.get("schedule_type")
@@ -206,11 +266,15 @@ def _decode_workflow_row(row: sqlite3.Row) -> dict:
     return d
 
 
-def _validate_steps(steps: list[dict]) -> list[dict]:
-    if not isinstance(steps, list) or not steps:
-        raise WorkflowError("steps must be a non-empty list")
+def _validate_steps(steps: list[dict] | None, *, notify_only: bool = False) -> list[dict]:
+    if steps is None:
+        steps = []
+    if not isinstance(steps, list):
+        raise WorkflowError("steps must be a list")
+    if not steps and not notify_only:
+        raise WorkflowError("steps must be a non-empty list (unless notify_only=true)")
 
-    allowed = {"prompt", "condition", "approval", "subtask", "notify"}
+    allowed = {"prompt", "condition", "approval", "subtask", "notify", "function"}
     out: list[dict] = []
     for i, s in enumerate(steps):
         if not isinstance(s, dict):
@@ -225,24 +289,59 @@ def _validate_steps(steps: list[dict]) -> list[dict]:
     return out
 
 
-def create_workflow(name: str, steps: list[dict], schedule: dict | None = None, enabled: bool = True) -> str:
-    wid = uuid.uuid4().hex[:12]
+def create_workflow(
+    name: str,
+    steps: list[dict] | None = None,
+    schedule: dict | None = None,
+    enabled: bool = True,
+    *,
+    workflow_id: str | None = None,
+    notify_only: bool = False,
+    notify_message: str = "",
+    metadata: dict | None = None,
+    allow_past_once: bool = False,
+) -> str:
+    wid = (workflow_id or uuid.uuid4().hex[:12]).strip()
     now = _now_iso()
-    steps = _validate_steps(steps)
-    st, sv, next_run = _normalize_schedule(schedule)
+    steps = _validate_steps(steps, notify_only=notify_only)
+    st, sv, next_run = _normalize_schedule(schedule, allow_past_once=allow_past_once)
+    meta_json = json.dumps(metadata or {})
 
     c = _conn()
     c.execute(
         """
         INSERT INTO workflows
-        (id, name, steps, enabled, schedule_type, schedule_value, next_run_at, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (id, name, steps, enabled, schedule_type, schedule_value, next_run_at,
+         created_at, updated_at, notify_only, notify_message, metadata_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (wid, name, json.dumps(steps), int(enabled), st, sv, next_run, now, now),
+        (
+            wid,
+            name,
+            json.dumps(steps),
+            int(enabled),
+            st,
+            sv,
+            next_run,
+            now,
+            now,
+            int(notify_only),
+            notify_message or "",
+            meta_json,
+        ),
     )
     c.commit()
     c.close()
     return wid
+
+
+def upsert_workflow(workflow_id: str, **kwargs) -> str:
+    """Insert or replace workflow by fixed id."""
+    wid = workflow_id.strip()
+    if get_workflow(wid):
+        update_workflow(wid, **kwargs)
+        return wid
+    return create_workflow(workflow_id=wid, **kwargs)
 
 
 def create_workflow_from_natural_language(
@@ -290,10 +389,14 @@ def update_workflow(workflow_id: str, **kwargs) -> None:
 
     name = kwargs.get("name", row["name"])
     enabled = bool(kwargs.get("enabled", row["enabled"]))
-    steps = _validate_steps(kwargs.get("steps", row["steps"]))
+    notify_only = bool(kwargs.get("notify_only", row.get("notify_only", False)))
+    notify_message = kwargs.get("notify_message", row.get("notify_message", ""))
+    metadata = kwargs.get("metadata", row.get("metadata", {}))
+    steps = _validate_steps(kwargs.get("steps", row["steps"]), notify_only=notify_only)
     schedule = kwargs.get("schedule", row.get("schedule"))
+    allow_past_once = bool(kwargs.get("allow_past_once", False))
 
-    st, sv, next_run = _normalize_schedule(schedule) if schedule is not None else (
+    st, sv, next_run = _normalize_schedule(schedule, allow_past_once=allow_past_once) if schedule is not None else (
         row.get("schedule_type"),
         row.get("schedule_value"),
         row.get("next_run_at"),
@@ -303,10 +406,23 @@ def update_workflow(workflow_id: str, **kwargs) -> None:
     c.execute(
         """
         UPDATE workflows
-        SET name = ?, steps = ?, enabled = ?, schedule_type = ?, schedule_value = ?, next_run_at = ?, updated_at = ?
+        SET name = ?, steps = ?, enabled = ?, schedule_type = ?, schedule_value = ?,
+            next_run_at = ?, updated_at = ?, notify_only = ?, notify_message = ?, metadata_json = ?
         WHERE id = ?
         """,
-        (name, json.dumps(steps), int(enabled), st, sv, next_run, _now_iso(), workflow_id),
+        (
+            name,
+            json.dumps(steps),
+            int(enabled),
+            st,
+            sv,
+            next_run,
+            _now_iso(),
+            int(notify_only),
+            notify_message or "",
+            json.dumps(metadata or {}),
+            workflow_id,
+        ),
     )
     c.commit()
     c.close()
@@ -432,6 +548,43 @@ def run_workflow(
     if not row:
         raise WorkflowError(f"Unknown workflow: {workflow_id}")
 
+    if row.get("notify_only"):
+        run_id = run_id or uuid.uuid4().hex[:12]
+        c = _conn()
+        c.execute(
+            """
+            INSERT INTO workflow_runs (id, workflow_id, status, started_at, steps_total, steps_done)
+            VALUES (?, ?, 'running', ?, 0, 0)
+            """,
+            (run_id, workflow_id, _now_iso()),
+        )
+        c.commit()
+        c.close()
+        msg = row.get("notify_message") or row.get("name") or "Reminder"
+        if notifier:
+            notifier(msg)
+        finished = _now_iso()
+        c = _conn()
+        c.execute(
+            """
+            UPDATE workflow_runs
+            SET status = ?, finished_at = ?, output = ?, steps_done = 0
+            WHERE id = ?
+            """,
+            ("completed", finished, msg, run_id),
+        )
+        next_run = _next_run_after(row.get("schedule_type"), row.get("schedule_value"), datetime.now())
+        enabled = row.get("enabled", True)
+        if row.get("schedule_type") == "once":
+            enabled = False
+        c.execute(
+            "UPDATE workflows SET last_run = ?, next_run_at = ?, enabled = ?, updated_at = ? WHERE id = ?",
+            (finished, next_run, int(bool(enabled)), finished, workflow_id),
+        )
+        c.commit()
+        c.close()
+        return run_id
+
     steps = _validate_steps(row["steps"])
     id_to_idx = _step_index_map(steps)
 
@@ -536,6 +689,26 @@ def run_workflow(
                 notifier(msg)
             outputs[sid] = msg
             _record_step(run_id, workflow_id, sid, stype, "completed", started, msg)
+            i += 1
+
+        elif stype == "function":
+            fn_name = str(step.get("name") or "").strip()
+            if not fn_name:
+                raise WorkflowError(f"function step {sid} missing name")
+            fn = _function_registry.get(fn_name)
+            if fn is None:
+                raise WorkflowError(f"Unknown workflow function: {fn_name}")
+            context = {
+                "workflow_id": workflow_id,
+                "run_id": run_id,
+                "step_outputs": dict(outputs),
+                "step_index": i,
+                "step_id": sid,
+                **_runtime_context,
+            }
+            result = str(fn(context))
+            outputs[sid] = result
+            _record_step(run_id, workflow_id, sid, stype, "completed", started, result)
             i += 1
 
         else:
@@ -647,20 +820,21 @@ def run_scheduler_once(
     approval_resolver: Callable[[dict], bool] | None = None,
 ) -> int:
     """Dispatch due recurring workflows once. Returns number dispatched."""
-    now = datetime.now().isoformat()
+    now = datetime.now().astimezone()
     c = _conn()
     rows = c.execute(
         """
         SELECT * FROM workflows
-        WHERE enabled = 1 AND next_run_at IS NOT NULL AND next_run_at <= ?
+        WHERE enabled = 1 AND next_run_at IS NOT NULL
         ORDER BY next_run_at ASC
-        """,
-        (now,),
+        """
     ).fetchall()
     c.close()
 
     dispatched = 0
     for row in rows:
+        if not _schedule_is_due(row["next_run_at"], now=now):
+            continue
         wid = row["id"]
         with _active_lock:
             if wid in _active_runs:

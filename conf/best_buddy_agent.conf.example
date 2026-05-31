@@ -40,6 +40,13 @@ files_root = ..
 # Max orchestrator tool iterations per user turn.
 max_tool_iterations = 4
 
+[web]
+# Web search (DuckDuckGo) and URL fetch tools for the agent.
+# enabled = false
+# max_results = 8
+# max_fetch_chars = 30000
+# timeout_seconds = 15
+
 [logging]
 # Enable detailed trace logging for debugging slow responses.
 enabled = false
@@ -74,8 +81,28 @@ log_responses = true
 # bot_token =
 # allowed_user_id =
 
+[workflows]
+# Background scheduler (started by Telegram bot)
+enabled = true
+poll_seconds = 30
+
+[deadline_watch]
+# Proactive Gmail deadline scanning + Telegram approval
+enabled = true
+scan_interval_seconds = 900
+gmail_query = is:unread newer_than:7d
+timezone = UTC
+lead_times = 1d,0d,1h
+proposal_ttl_hours = 72
+
 [gmail]
 # Gmail read + drafts only (no send). Run: best-buddy-agent-gmail-auth
 # enabled = false
 # credentials_path = ../.data/gmail/credentials.json
 # token_path = ../.data/gmail/token.json
+
+[calendar]
+# Google Calendar (reuse Gmail credentials.json; separate token)
+# enabled = false
+# credentials_path = ../.data/gmail/credentials.json
+# token_path = ../.data/calendar/token.json

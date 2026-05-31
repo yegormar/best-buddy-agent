@@ -22,3 +22,9 @@ def test_list_files_tool(tmp_path: Path):
 def test_search_memory_tool():
     out = search_memory("family", top_k=3)
     assert isinstance(out, str)
+
+
+def test_search_memory_empty_query_lists_memories():
+    out = search_memory("", top_k=5)
+    assert isinstance(out, str)
+    assert "query is required" not in out

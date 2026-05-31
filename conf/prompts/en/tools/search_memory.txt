@@ -1,1 +1,4 @@
 Search long-term memory by semantic similarity.
+
+query: required non-empty phrase (e.g. "user name", "college plans", "family").
+For broad questions like "what do you know about me?", use list_memories with an empty category instead.

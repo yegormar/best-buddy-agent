@@ -1,5 +1,7 @@
 [console_scripts]
+best-buddy-agent-calendar-auth = best_buddy_agent.calendar_auth_cli:main
 best-buddy-agent-chat = best_buddy_agent.cli:main
 best-buddy-agent-doctor = best_buddy_agent.startup_cli:main
 best-buddy-agent-gmail-auth = best_buddy_agent.gmail_auth_cli:main
+best-buddy-agent-system-test = best_buddy_agent.system_test_cli:main
 best-buddy-agent-telegram = best_buddy_agent.channels.telegram_bot:main

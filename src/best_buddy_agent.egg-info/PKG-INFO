@@ -8,6 +8,8 @@ Requires-Dist: numpy>=1.26
 Requires-Dist: networkx>=3.2
 Requires-Dist: pydantic-ai-slim[openai]>=0.4
 Requires-Dist: pydantic>=2.10
+Requires-Dist: ddgs>=9.0
+Requires-Dist: httpx>=0.27
 Provides-Extra: faiss
 Requires-Dist: faiss-cpu>=1.8; extra == "faiss"
 Provides-Extra: reliability
@@ -21,6 +23,10 @@ Provides-Extra: gmail
 Requires-Dist: google-api-python-client>=2.100; extra == "gmail"
 Requires-Dist: google-auth-oauthlib>=1.2; extra == "gmail"
 Requires-Dist: google-auth-httplib2>=0.2; extra == "gmail"
+Provides-Extra: calendar
+Requires-Dist: google-api-python-client>=2.100; extra == "calendar"
+Requires-Dist: google-auth-oauthlib>=1.2; extra == "calendar"
+Requires-Dist: google-auth-httplib2>=0.2; extra == "calendar"
 
 # best-buddy-agent
 

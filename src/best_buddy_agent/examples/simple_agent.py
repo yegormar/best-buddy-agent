@@ -38,7 +38,7 @@ from pydantic_ai.tools import RunContext
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://ubuntu-llm:11434/v1").rstrip("/")
 if not OLLAMA_BASE_URL.endswith("/v1"):
     OLLAMA_BASE_URL = f"{OLLAMA_BASE_URL}/v1"
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "granite4.1:3b")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma4:26b")
 # Set SHOW_PYDANTIC_MESSAGES=1 to also dump pydantic-ai's internal message objects.
 SHOW_PYDANTIC_MESSAGES = os.getenv("SHOW_PYDANTIC_MESSAGES", "").lower() in ("1", "true", "yes")
 

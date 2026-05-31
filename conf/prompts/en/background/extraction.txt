@@ -45,6 +45,7 @@ RELATIONS — Look for connections between entities:
 - Work: works_on, manages, member_of, part_of, employed_by
 - Preference: prefers, enjoys, dislikes, interested_in
 - Temporal: deadline_for, scheduled_for, started_on
+- For deadlines and milestones, store ISO datetime in properties.due_at on event entities
 - Knowledge: studies, proficient_in, certified_in, learning
 - Media: reading, watching, recommends, authored
 - General: owns

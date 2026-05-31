@@ -19,6 +19,52 @@ class ConfigError(Exception):
 
 
 @dataclass(slots=True)
+class WebSettings:
+    """Web search and URL fetch tools ([web] section)."""
+
+    enabled: bool = False
+    max_results: int = 8
+    max_fetch_chars: int = 30_000
+    timeout_seconds: int = 15
+
+
+@dataclass(slots=True)
+class WorkflowSettings:
+    """Background workflow scheduler ([workflows] section)."""
+
+    enabled: bool = True
+    poll_seconds: int = 30
+
+
+@dataclass(slots=True)
+class DeadlineWatchSettings:
+    """Deadline Watch inbox scanner ([deadline_watch] section)."""
+
+    enabled: bool = True
+    scan_interval_seconds: int = 900
+    gmail_query: str = "is:unread newer_than:7d"
+    timezone: str = "UTC"
+    lead_times: tuple[str, ...] = ("1d", "0d", "1h")
+    proposal_ttl_hours: int = 72
+
+
+@dataclass(slots=True)
+class CalendarSettings:
+    """Google Calendar integration (optional [calendar] section)."""
+
+    enabled: bool = False
+    credentials_path: Path = Path.home() / ".best_buddy_agent" / "gmail" / "credentials.json"
+    token_path: Path = Path.home() / ".best_buddy_agent" / "calendar" / "token.json"
+
+    def is_ready(self) -> bool:
+        return (
+            self.enabled
+            and self.credentials_path.is_file()
+            and self.token_path.is_file()
+        )
+
+
+@dataclass(slots=True)
 class GmailSettings:
     """Gmail integration (optional [gmail] section)."""
 
@@ -83,6 +129,10 @@ class AgentConfig:
     reliability_required: bool = False
     assistant_name: str = "BB"
     gmail: GmailSettings = field(default_factory=GmailSettings)
+    calendar: CalendarSettings = field(default_factory=CalendarSettings)
+    web: WebSettings = field(default_factory=WebSettings)
+    workflows: WorkflowSettings = field(default_factory=WorkflowSettings)
+    deadline_watch: DeadlineWatchSettings = field(default_factory=DeadlineWatchSettings)
 
     @property
     def ollama_base_url(self) -> str:
@@ -284,6 +334,10 @@ def load_config(conf_file: str | None = None) -> AgentConfig:
         raise ConfigError("agent.assistant_name must be non-empty")
 
     gmail = _load_gmail_settings(parser, path)
+    calendar = _load_calendar_settings(parser, path)
+    web = _load_web_settings(parser)
+    workflows = _load_workflow_settings(parser)
+    deadline_watch = _load_deadline_watch_settings(parser)
 
     return AgentConfig(
         llm_host=llm["llm_host"].strip(),
@@ -309,6 +363,10 @@ def load_config(conf_file: str | None = None) -> AgentConfig:
         reliability_required=reliability_required,
         assistant_name=assistant_name,
         gmail=gmail,
+        calendar=calendar,
+        web=web,
+        workflows=workflows,
+        deadline_watch=deadline_watch,
     )
 
 
@@ -319,6 +377,121 @@ def _resolve_conf_path(raw: str, conf_file: Path) -> Path:
     else:
         candidate = candidate.resolve()
     return candidate
+
+
+def _load_bool(section: dict, key: str, default: str) -> bool:
+    raw = str(section.get(key, default)).strip().lower()
+    try:
+        return ConfigParser.BOOLEAN_STATES[raw]
+    except KeyError as exc:
+        raise ConfigError(f"{key} must be true or false") from exc
+
+
+def _load_web_settings(parser: ConfigParser) -> WebSettings:
+    if "web" not in parser:
+        return WebSettings(enabled=False)
+    section = parser["web"]
+    enabled = _load_bool(section, "enabled", "false")
+    max_results_raw = str(section.get("max_results", "8")).strip()
+    try:
+        max_results = int(max_results_raw)
+    except ValueError as exc:
+        raise ConfigError("web.max_results must be an integer") from exc
+    if max_results < 1 or max_results > 10:
+        raise ConfigError("web.max_results must be between 1 and 10")
+
+    max_fetch_raw = str(section.get("max_fetch_chars", "30000")).strip()
+    try:
+        max_fetch_chars = int(max_fetch_raw)
+    except ValueError as exc:
+        raise ConfigError("web.max_fetch_chars must be an integer") from exc
+    if max_fetch_chars < 1000 or max_fetch_chars > 200_000:
+        raise ConfigError("web.max_fetch_chars must be between 1000 and 200000")
+
+    timeout_raw = str(section.get("timeout_seconds", "15")).strip()
+    try:
+        timeout_seconds = int(timeout_raw)
+    except ValueError as exc:
+        raise ConfigError("web.timeout_seconds must be an integer") from exc
+    if timeout_seconds < 1 or timeout_seconds > 120:
+        raise ConfigError("web.timeout_seconds must be between 1 and 120")
+
+    return WebSettings(
+        enabled=enabled,
+        max_results=max_results,
+        max_fetch_chars=max_fetch_chars,
+        timeout_seconds=timeout_seconds,
+    )
+
+
+def _load_workflow_settings(parser: ConfigParser) -> WorkflowSettings:
+    if "workflows" not in parser:
+        return WorkflowSettings(enabled=False, poll_seconds=30)
+    section = parser["workflows"]
+    enabled = _load_bool(section, "enabled", "true")
+    poll_raw = str(section.get("poll_seconds", "30")).strip()
+    try:
+        poll_seconds = int(poll_raw)
+    except ValueError as exc:
+        raise ConfigError("workflows.poll_seconds must be an integer") from exc
+    if poll_seconds < 5 or poll_seconds > 3600:
+        raise ConfigError("workflows.poll_seconds must be between 5 and 3600")
+    return WorkflowSettings(enabled=enabled, poll_seconds=poll_seconds)
+
+
+def _load_deadline_watch_settings(parser: ConfigParser) -> DeadlineWatchSettings:
+    if "deadline_watch" not in parser:
+        return DeadlineWatchSettings(enabled=False)
+    section = parser["deadline_watch"]
+    enabled = _load_bool(section, "enabled", "true")
+    interval_raw = str(section.get("scan_interval_seconds", "900")).strip()
+    try:
+        scan_interval_seconds = int(interval_raw)
+    except ValueError as exc:
+        raise ConfigError("deadline_watch.scan_interval_seconds must be an integer") from exc
+    if scan_interval_seconds < 60:
+        raise ConfigError("deadline_watch.scan_interval_seconds must be at least 60")
+    gmail_query = str(section.get("gmail_query", "is:unread newer_than:7d")).strip()
+    timezone = str(section.get("timezone", "UTC")).strip() or "UTC"
+    lead_raw = str(section.get("lead_times", "1d,0d,1h")).strip()
+    lead_times = tuple(x.strip() for x in lead_raw.split(",") if x.strip()) or ("1d", "0d", "1h")
+    ttl_raw = str(section.get("proposal_ttl_hours", "72")).strip()
+    try:
+        proposal_ttl_hours = int(ttl_raw)
+    except ValueError as exc:
+        raise ConfigError("deadline_watch.proposal_ttl_hours must be an integer") from exc
+    return DeadlineWatchSettings(
+        enabled=enabled,
+        scan_interval_seconds=scan_interval_seconds,
+        gmail_query=gmail_query,
+        timezone=timezone,
+        lead_times=lead_times,
+        proposal_ttl_hours=proposal_ttl_hours,
+    )
+
+
+def _load_calendar_settings(parser: ConfigParser, conf_file: Path) -> CalendarSettings:
+    from .calendar_client import DEFAULT_CREDENTIALS_PATH, DEFAULT_TOKEN_PATH
+
+    section = parser["calendar"] if "calendar" in parser else {}
+    enabled = _load_bool(section, "enabled", "false")
+    creds_raw = str(section.get("credentials_path", "")).strip()
+    token_raw = str(section.get("token_path", "")).strip()
+    credentials_path = (
+        _resolve_conf_path(creds_raw, conf_file)
+        if creds_raw
+        else DEFAULT_CREDENTIALS_PATH.resolve()
+    )
+    token_path = (
+        _resolve_conf_path(token_raw, conf_file)
+        if token_raw
+        else DEFAULT_TOKEN_PATH.resolve()
+    )
+    return CalendarSettings(
+        enabled=enabled,
+        credentials_path=credentials_path,
+        token_path=token_path,
+    )
 
 
 def _load_gmail_settings(parser: ConfigParser, conf_file: Path) -> GmailSettings:
