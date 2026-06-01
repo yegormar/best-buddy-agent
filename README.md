@@ -61,7 +61,7 @@ Optional `[logging]` keys:
 - `log_responses` - include full model outputs and tool results
 - `log_message_history`, `log_capability_events`, `log_tool_args` (see example conf)
 
-See `docs/MIGRATION_PYDANTIC_AI.md`, `docs/DEBUGGING.md`, `docs/ARCHITECTURE.md`, `docs/TELEGRAM.md`.
+See `docs/MIGRATION_PYDANTIC_AI.md`, `docs/DEBUGGING.md`, `docs/ARCHITECTURE.md`, `docs/TELEGRAM.md`, `docs/DEPLOYMENT.md`.
 
 **Memory (important):** [docs/MEMORY_WORKFLOW.md](docs/MEMORY_WORKFLOW.md) (developers) · [docs/MEMORY_WORKFLOW_AI.md](docs/MEMORY_WORKFLOW_AI.md) (AI assistants).
 
@@ -129,6 +129,8 @@ Set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_ALLOWED_USER_ID` (see [docs/TELEGRAM.md](
 ```bash
 best-buddy-agent-telegram --config conf/best_buddy_agent.conf
 ```
+
+**Dedicated server:** see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ## Notes
 
