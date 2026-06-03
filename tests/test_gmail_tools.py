@@ -8,6 +8,39 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 
+def test_extract_auth_code_bare():
+    from best_buddy_agent.gmail_client import _extract_auth_code
+
+    assert _extract_auth_code("abc123") == "abc123"
+
+
+def test_extract_auth_code_from_redirect_url():
+    from best_buddy_agent.gmail_client import _extract_auth_code
+
+    url = "http://localhost:1/?code=4%2F0Abc&scope=email"
+    assert _extract_auth_code(url) == "4/0Abc"
+
+
+def test_extract_auth_code_empty_raises():
+    from best_buddy_agent.gmail_client import GmailError, _extract_auth_code
+
+    with pytest.raises(GmailError, match="empty"):
+        _extract_auth_code("  ")
+
+
+def test_ensure_oauth_redirect_uri_from_client_config():
+    from best_buddy_agent.gmail_client import _ensure_oauth_redirect_uri
+
+    class FakeFlow:
+        client_config = {
+            "installed": {"redirect_uris": ["http://localhost", "urn:ietf:wg:oauth:2.0:oob"]}
+        }
+
+    flow = FakeFlow()
+    assert _ensure_oauth_redirect_uri(flow) == "http://localhost"
+    assert flow.redirect_uri == "http://localhost"
+
+
 def test_search_gmail_empty_results():
     from best_buddy_agent.gmail_client import search_messages
 

@@ -27,11 +27,13 @@ Telegram users
 
 **Outbound internet required on the agent host:**
 
-| Service | Used for |
-|---------|----------|
-| `api.telegram.org` | Telegram bot (required) |
-| DuckDuckGo | `[web] enabled` → `web_search` |
-| Arbitrary HTTPS | `fetch_url`, Gmail API (if enabled) |
+
+| Service            | Used for                            |
+| ------------------ | ----------------------------------- |
+| `api.telegram.org` | Telegram bot (required)             |
+| DuckDuckGo         | `[web] enabled` → `web_search`      |
+| Arbitrary HTTPS    | `fetch_url`, Gmail API (if enabled) |
+
 
 **Inbound ports:** none (long polling; no webhook).
 
@@ -44,9 +46,9 @@ Everything lives under `/opt/best-buddy-agent/` and is owned by a dedicated `bes
 ```text
 /opt/best-buddy-agent/
   conf/                 # best_buddy_agent.conf, prompts/
-  src/                  # Python package
+  dist/                 # wheel from dev build (optional after install)
   .venv/                # virtualenv
-  data/                 # BEST_BUDDY_AGENT_DATA_DIR (DBs, Gmail tokens)
+  data/                 # BEST_BUDDY_AGENT_DATA_DIR (DBs, gmail/*.json)
   workspace/            # files_root — only path file tools may use
   log/                  # trace log
 ```
@@ -81,20 +83,33 @@ sudo chown -R bestbuddy:bestbuddy /opt/best-buddy-agent
 
 ## 3. Install application
 
-As root or your deploy user, then hand ownership to `bestbuddy`:
+Copy `**conf/**` and `**dist/*.whl**` from your dev machine (see [wheel build](#wheel-build-on-dev-machine) below). No git required on the server.
 
 ```bash
-sudo mkdir -p /opt/best-buddy-agent
-cd /opt/best-buddy-agent
+sudo mkdir -p /opt/best-buddy-agent/{conf,dist,data,workspace,log,.venv}
+sudo chown -R bestbuddy:bestbuddy /opt/best-buddy-agent
 
-# Clone (or rsync from dev machine)
-sudo git clone <your-repo-url> .
-# If the repo root is best-buddy/best-buddy-agent/, copy that tree here instead.
-
+# after scp of conf/ and dist/best_buddy_agent-0.1.0-py3-none-any.whl:
 sudo -u bestbuddy python3 -m venv /opt/best-buddy-agent/.venv
 sudo -u bestbuddy /opt/best-buddy-agent/.venv/bin/pip install -U pip wheel
-sudo -u bestbuddy /opt/best-buddy-agent/.venv/bin/pip install -e '.[telegram,gmail,calendar,faiss,reliability]'
+sudo -u bestbuddy /opt/best-buddy-agent/.venv/bin/pip install \
+  '/opt/best-buddy-agent/dist/best_buddy_agent-0.1.0-py3-none-any.whl[telegram,gmail,calendar,faiss,reliability]'
 ```
+
+Alternative: git clone into `/opt/best-buddy-agent` and `pip install -e '.[telegram,gmail,...]'` (editable dev-style install).
+
+### Wheel build on dev machine
+
+```bash
+cd best-buddy-agent
+pip install build
+python -m build
+# artifacts: dist/best_buddy_agent-0.1.0-py3-none-any.whl
+tar czf /tmp/best-buddy-conf.tgz conf/
+scp dist/*.whl /tmp/best-buddy-conf.tgz user@server:/opt/best-buddy-agent/
+```
+
+The wheel installs **Python code only**. You must still deploy `**conf/`** (prompts + `best_buddy_agent.conf`) separately.
 
 Verify web tools (if `[web] enabled = true`):
 
@@ -119,55 +134,89 @@ sudo -u bestbuddy cp /opt/best-buddy-agent/conf/best_buddy_agent.conf.example \
 
 Edit `/opt/best-buddy-agent/conf/best_buddy_agent.conf`:
 
-| Section | Production values |
-|---------|-------------------|
-| `[llm]` | `llm_host = ubuntu-llm` (or your Ollama host), `llm_model` must exist there |
-| `[tools]` | `files_root = /opt/best-buddy-agent/workspace` |
-| `[telegram]` | `enabled = true` |
-| `[web]` | `enabled = true` if you want internet search |
-| `[gmail]` | `enabled = true` after OAuth; set paths under `data/` (below) |
-| `[workflows]` | `enabled = true` |
-| `[logging]` | `enabled = true`, `file = /opt/best-buddy-agent/log/trace.log` |
 
-Gmail paths (explicit, under data dir):
+| Section       | Production values                                                           |
+| ------------- | --------------------------------------------------------------------------- |
+| `[llm]`       | `llm_host = ubuntu-llm` (or your Ollama host), `llm_model` must exist there |
+| `[tools]`     | `files_root = ../workspace`                                                 |
+| `[telegram]`  | `enabled = true`                                                            |
+| `[web]`       | `enabled = true` if you want internet search                                |
+| `[gmail]`     | `enabled = true` after OAuth; paths under `data/` (below)                   |
+| `[workflows]` | `enabled = true`                                                            |
+| `[logging]`   | `enabled = true`, `file = ../log/trace.log`                                 |
+
+
+Paths in the config file are relative to `conf/` (e.g. `../data` → install root `data/`).
+
+Gmail paths:
 
 ```ini
 [gmail]
 enabled = true
-credentials_path = /opt/best-buddy-agent/data/gmail/credentials.json
-token_path = /opt/best-buddy-agent/data/gmail/token.json
+credentials_path = ../data/gmail/credentials.json
+token_path = ../data/gmail/token.json
 ```
 
-**Secrets** — `/etc/best-buddy/env` (mode `600`, root-owned):
+**Secrets** — `/etc/best-buddy/env` (paths relative to install root = systemd `WorkingDirectory`):
 
 ```bash
 TELEGRAM_BOT_TOKEN=...
 TELEGRAM_ALLOWED_USER_ID=123456789
-BEST_BUDDY_AGENT_CONF=/opt/best-buddy-agent/conf/best_buddy_agent.conf
-BEST_BUDDY_AGENT_DATA_DIR=/opt/best-buddy-agent/data
+BEST_BUDDY_AGENT_CONF=conf/best_buddy_agent.conf
+BEST_BUDDY_AGENT_DATA_DIR=data
 ```
 
 ```bash
 sudo mkdir -p /etc/best-buddy
-sudo install -m 600 /dev/stdin /etc/best-buddy/env <<'EOF'
+sudo install -m 640 -o root -g bestbuddy /dev/stdin /etc/best-buddy/env <<'EOF'
 TELEGRAM_BOT_TOKEN=...
 TELEGRAM_ALLOWED_USER_ID=...
-BEST_BUDDY_AGENT_CONF=/opt/best-buddy-agent/conf/best_buddy_agent.conf
-BEST_BUDDY_AGENT_DATA_DIR=/opt/best-buddy-agent/data
+BEST_BUDDY_AGENT_CONF=conf/best_buddy_agent.conf
+BEST_BUDDY_AGENT_DATA_DIR=data
 EOF
 ```
+
+Use `**640` and group `bestbuddy**` so the service user can read the file when you run `doctor` manually as `bestbuddy`. systemd also reads root-owned `600` files when starting the service, but manual `source /etc/best-buddy/env` as `bestbuddy` needs read permission.
 
 ---
 
 ## 5. Gmail / Calendar OAuth (one-time)
 
-On a machine with a browser, then copy to the server:
+Gmail needs **two files** under `/opt/best-buddy-agent/data/gmail/`:
+
+
+| File                 | How you get it                                                                                          |
+| -------------------- | ------------------------------------------------------------------------------------------------------- |
+| **credentials.json** | Download from [Google Cloud Console](https://console.cloud.google.com/) → OAuth client ID → Desktop app |
+| **token.json**       | **Not** downloaded — `best-buddy-agent-gmail-auth` (browser) or `--no-browser` on headless servers      |
+
+
+See [GMAIL.md](GMAIL.md) for Google Cloud setup and scopes.
+
+### Create token.json (dev machine with browser)
+
+1. Place `credentials.json` at the path in config (or default `data/gmail/`).
+2. Run:
 
 ```bash
-best-buddy-agent-gmail-auth --config /path/to/best_buddy_agent.conf
+best-buddy-agent-gmail-auth --config conf/best_buddy_agent.conf
 ```
 
-Copy to server:
+**Or on a headless server** (no browser — paste code after signing in elsewhere):
+
+```bash
+best-buddy-agent-gmail-auth --config /opt/best-buddy-agent/conf/best_buddy_agent.conf --no-browser
+```
+
+Open the printed URL on your phone/laptop → after redirect, copy `code=...` from the address bar → paste at the prompt.
+
+1. Confirm:
+
+```bash
+best-buddy-agent-gmail-auth --status --config /opt/best-buddy-agent/conf/best_buddy_agent.conf
+```
+
+1. If you authenticated on another machine, copy both files to the server:
 
 ```bash
 sudo mkdir -p /opt/best-buddy-agent/data/gmail
@@ -175,7 +224,11 @@ sudo cp credentials.json token.json /opt/best-buddy-agent/data/gmail/
 sudo chown -R bestbuddy:bestbuddy /opt/best-buddy-agent/data
 ```
 
-See [GMAIL.md](GMAIL.md).
+Or rsync the whole data dir from dev (§6), which includes `gmail/` if you already authenticated locally.
+
+Calendar (optional): `best-buddy-agent-calendar-auth` — separate `calendar/token.json`; can reuse the same `credentials.json`.
+
+Restart the Telegram service after adding or replacing tokens.
 
 ---
 
@@ -186,7 +239,9 @@ rsync -av ~/.best_buddy_agent/ user@server:/opt/best-buddy-agent/data/
 ssh user@server 'sudo chown -R bestbuddy:bestbuddy /opt/best-buddy-agent/data'
 ```
 
-Important files: `memory.db`, `threads.db`, `workflows.db`, `gmail/`, `calendar/`.
+Important files: `memory.db`, `threads.db`, `workflows.db`, `gmail/credentials.json`, `gmail/token.json`, `calendar/` (if used).
+
+If `gmail/token.json` is missing on the server, Gmail tools and deadline watch will fail doctor checks until you complete §5.
 
 ---
 
@@ -221,7 +276,9 @@ Send a Telegram message, then Ctrl+C.
 
 ## 9. systemd service (isolated user)
 
-Create `/etc/systemd/system/best-buddy-telegram.service`:
+Create `/etc/systemd/system/best-buddy-telegram.service`.
+
+`ExecStart` must be an **absolute** path to the binary (systemd rejects `.venv/bin/...` even with `WorkingDirectory` set). Repeat the install root in `ReadWritePaths` / `ReadOnlyPaths` — systemd does not prefix those from `WorkingDirectory`.
 
 ```ini
 [Unit]
@@ -235,8 +292,7 @@ User=bestbuddy
 Group=bestbuddy
 WorkingDirectory=/opt/best-buddy-agent
 EnvironmentFile=/etc/best-buddy/env
-ExecStart=/opt/best-buddy-agent/.venv/bin/best-buddy-agent-telegram \
-  --config /opt/best-buddy-agent/conf/best_buddy_agent.conf
+ExecStart=/opt/best-buddy-agent/.venv/bin/best-buddy-agent-telegram --config /opt/best-buddy-agent/conf/best_buddy_agent.conf
 Restart=on-failure
 RestartSec=10
 
@@ -268,20 +324,26 @@ sudo journalctl -u best-buddy-telegram -f
 
 ## 10. Operations
 
-| Task | Command |
-|------|---------|
-| Logs (systemd) | `journalctl -u best-buddy-telegram -f` |
-| Trace log | `tail -f /opt/best-buddy-agent/log/trace.log` |
-| Restart | `sudo systemctl restart best-buddy-telegram` |
-| Health check | `sudo -u bestbuddy bash -c 'set -a; source /etc/best-buddy/env; set +a; /opt/best-buddy-agent/.venv/bin/best-buddy-agent-doctor --profile telegram'` |
-| Update code | See below |
+
+| Task           | Command                                                                                                                                              |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Logs (systemd) | `journalctl -u best-buddy-telegram -f`                                                                                                               |
+| Trace log      | `tail -f /opt/best-buddy-agent/log/trace.log`                                                                                                        |
+| Restart        | `sudo systemctl restart best-buddy-telegram`                                                                                                         |
+| Health check   | `sudo -u bestbuddy bash -c 'set -a; source /etc/best-buddy/env; set +a; /opt/best-buddy-agent/.venv/bin/best-buddy-agent-doctor --profile telegram'` |
+| Update code    | See below                                                                                                                                            |
+
 
 **Update workflow:**
 
 ```bash
-cd /opt/best-buddy-agent
-sudo git pull
-sudo -u bestbuddy .venv/bin/pip install -e '.[telegram,gmail,calendar,faiss,reliability]'
+# on dev: rebuild wheel, scp conf if prompts changed
+cd best-buddy-agent && python -m build
+scp dist/best_buddy_agent-0.1.0-py3-none-any.whl user@server:/opt/best-buddy-agent/dist/
+
+# on server
+sudo -u bestbuddy /opt/best-buddy-agent/.venv/bin/pip install \
+  '/opt/best-buddy-agent/dist/best_buddy_agent-0.1.0-py3-none-any.whl[telegram,gmail,calendar,faiss,reliability]'
 sudo systemctl restart best-buddy-telegram
 ```
 
@@ -291,15 +353,19 @@ After any `pip install`, restart the service (running process does not load new 
 
 ## 11. Troubleshooting
 
-| Symptom | Likely cause |
-|---------|----------------|
-| `Temporary failure in name resolution` | DNS / outbound network on agent host |
-| `ddgs not installed` | Re-run `pip install -e '.[telegram]'` in `/opt/best-buddy-agent/.venv`, restart |
-| Ollama check fails | Wrong `llm_host`, firewall, or model not on LLM server |
-| Bot silent | Wrong `TELEGRAM_ALLOWED_USER_ID` |
-| Gmail tools missing | Token missing under `/opt/best-buddy-agent/data/gmail/` |
-| systemd start fails after hardening | Add missing path to `ReadWritePaths`; check `journalctl -u best-buddy-telegram` |
-| Permission denied on log/data | `chown -R bestbuddy:bestbuddy /opt/best-buddy-agent` |
+
+| Symptom                                      | Likely cause                                                                                          |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `Temporary failure in name resolution`       | DNS / outbound network on agent host                                                                  |
+| `ddgs not installed`                         | Re-run `pip install -e '.[telegram]'` in `/opt/best-buddy-agent/.venv`, restart                       |
+| Ollama check fails                           | Wrong `llm_host`, firewall, or model not on LLM server                                                |
+| Bot silent                                   | Wrong `TELEGRAM_ALLOWED_USER_ID`                                                                      |
+| Gmail tools missing                          | `credentials.json` + `token.json` under `data/gmail/` — see §5 and [GMAIL.md](GMAIL.md)               |
+| `Permission denied` on `/etc/best-buddy/env` | Use `chmod 640` and `chgrp bestbuddy` (§4) for manual doctor as `bestbuddy`                           |
+| `Read-only file system` on trace.log         | `ReadWritePaths` must include `%h/log`; `bestbuddy` home (`useradd -d`) must match `WorkingDirectory` |
+| systemd start fails after hardening          | `getent passwd bestbuddy` home must equal `WorkingDirectory`; see `journalctl -u best-buddy-telegram` |
+| Permission denied on log/data                | `chown -R bestbuddy:bestbuddy /opt/best-buddy-agent`                                                  |
+
 
 ---
 

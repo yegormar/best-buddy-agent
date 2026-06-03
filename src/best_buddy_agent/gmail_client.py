@@ -93,8 +93,13 @@ def run_oauth_flow(
     *,
     credentials: str | Path | None = None,
     token: str | Path | None = None,
+    no_browser: bool = False,
 ) -> Path:
-    """Open browser OAuth consent; write token JSON. Returns token path."""
+    """Run OAuth consent and write token JSON. Returns token path.
+
+    With no_browser=True, prints an authorization URL and reads a code from stdin
+    (for headless servers). Paste either the code or the full redirect URL.
+    """
     creds_file = credentials_path(credentials)
     if not creds_file.is_file():
         raise GmailError(f"credentials.json not found: {creds_file}")
@@ -103,10 +108,69 @@ def run_oauth_flow(
 
     ensure_gmail_dir()
     tp = token_path(token)
+    tp.parent.mkdir(parents=True, exist_ok=True)
     flow = InstalledAppFlow.from_client_secrets_file(str(creds_file), GMAIL_SCOPES)
-    creds = flow.run_local_server(port=0)
+    if no_browser:
+        creds = _run_oauth_flow_no_browser(flow)
+    else:
+        creds = flow.run_local_server(port=0)
     tp.write_text(creds.to_json())
     return tp
+
+
+def _extract_auth_code(raw: str) -> str:
+    """Accept a bare code or a full http://localhost/?code=... redirect URL."""
+    s = raw.strip()
+    if not s:
+        raise GmailError("empty authorization code")
+    if "code=" in s:
+        from urllib.parse import parse_qs, urlparse
+
+        if s.startswith("http://") or s.startswith("https://"):
+            codes = parse_qs(urlparse(s).query).get("code", [])
+            if codes:
+                return codes[0].strip()
+        # Paste of query string fragment
+        for part in s.replace("?", "&").split("&"):
+            if part.startswith("code="):
+                return part.split("=", 1)[1].strip()
+    return s
+
+
+def _ensure_oauth_redirect_uri(flow: Any) -> str:
+    """Set redirect_uri on the flow (required for authorization_url; run_local_server does this implicitly)."""
+    existing = getattr(flow, "redirect_uri", None)
+    if existing:
+        return str(existing)
+    config = getattr(flow, "client_config", None) or {}
+    block = config.get("installed") or config.get("web") or {}
+    uris = block.get("redirect_uris") or ["http://localhost"]
+    uri = str(uris[0])
+    flow.redirect_uri = uri
+    return uri
+
+
+def _run_oauth_flow_no_browser(flow: Any) -> Any:
+    """Headless OAuth: user opens URL on any device and pastes the code."""
+    redirect_uri = _ensure_oauth_redirect_uri(flow)
+    auth_url, _ = flow.authorization_url(access_type="offline", prompt="consent")
+    print(
+        "\nNo browser on this machine. On your phone or laptop, open this URL and sign in:\n"
+        f"\n{auth_url}\n"
+        f"\n(redirect_uri={redirect_uri} — use a Desktop OAuth client in Google Cloud; see docs/GMAIL.md)\n"
+        "\nAfter Google redirects to localhost, the page may fail to load — that is normal.\n"
+        "Copy the authorization code from the address bar (the value after code=),\n"
+        "or paste the full redirect URL here.\n"
+    )
+    try:
+        raw = input("Authorization code or redirect URL: ")
+    except EOFError as exc:
+        raise GmailError("no authorization code provided (stdin closed)") from exc
+    code = _extract_auth_code(raw)
+    flow.fetch_token(code=code)
+    if flow.credentials is None:
+        raise GmailError("OAuth failed — no credentials returned")
+    return flow.credentials
 
 
 def build_gmail_service(

@@ -185,6 +185,76 @@ async def _run_agent_for_message(
     await send_text_chunks(update.effective_chat, str(result))
 
 
+def _voice_file_ext(voice: Any) -> str:
+    mime = (getattr(voice, "mime_type", None) or "").lower()
+    if "ogg" in mime:
+        return ".ogg"
+    if "mp3" in mime or "mpeg" in mime:
+        return ".mp3"
+    if "webm" in mime:
+        return ".webm"
+    if "wav" in mime:
+        return ".wav"
+    if "m4a" in mime or "mp4" in mime:
+        return ".m4a"
+    return ".ogg"
+
+
+async def handle_voice(
+    update: Any,
+    context: Any,
+    *,
+    config: AgentConfig,
+    allowed_user_id: int,
+) -> None:
+    user = update.effective_user
+    if not is_authorized(user.id if user else None, allowed_user_id):
+        log.warning("Rejected unauthorized Telegram user %s", getattr(user, "id", None))
+        return
+
+    if not config.stt.enabled:
+        await update.message.reply_text("Voice messages are not enabled on this bot.")
+        return
+
+    voice = update.message.voice or update.message.audio
+    if voice is None:
+        return
+
+    msg = update.message
+    try:
+        tg_file = await voice.get_file()
+        data = await tg_file.download_as_bytearray()
+    except Exception as exc:
+        log.error("Failed to download voice/audio: %s", exc)
+        await msg.reply_text("Could not download your voice message.")
+        return
+
+    from ..transcription import transcribe_bytes
+
+    loop = asyncio.get_running_loop()
+    try:
+        text = await loop.run_in_executor(
+            None,
+            lambda: transcribe_bytes(bytes(data), file_ext=_voice_file_ext(voice)),
+        )
+    except Exception as exc:
+        log.exception("Transcription failed: %s", exc)
+        await msg.reply_text(f"Could not transcribe voice message: {exc}")
+        return
+
+    if not text:
+        await msg.reply_text("Could not transcribe your voice message (no speech detected).")
+        return
+
+    if config.stt.echo_transcript:
+        preview = text if len(text) <= 500 else f"{text[:500]}…"
+        await msg.reply_text(f"🎤 {preview}")
+
+    caption = (update.message.caption or "").strip()
+    user_text = f"{caption}\n\n{text}".strip() if caption else text
+    await _run_agent_for_message(update, context, config=config, user_text=user_text)
+
+
 async def handle_message(
     update: Any,
     context: Any,
@@ -287,8 +357,9 @@ async def cmd_start(
     ):
         return
     name = config.assistant_name
+    voice_hint = " Send a voice note to chat by voice." if config.stt.enabled else ""
     await update.message.reply_text(
-        f"{name} is ready. Send a message to chat.\n"
+        f"{name} is ready. Send a message to chat.{voice_hint}\n"
         "Commands: /help, /newthread"
     )
 
@@ -308,8 +379,14 @@ async def cmd_help(
     trace_hint = ""
     if config.log_enabled and config.log_file:
         trace_hint = f"\nTrace log: {config.log_file}"
+    voice_line = (
+        "Voice notes are transcribed locally and treated as text.\n\n"
+        if config.stt.enabled
+        else ""
+    )
     await update.message.reply_text(
         f"{config.assistant_name} — Best Buddy on Telegram\n\n"
+        f"{voice_line}"
         "/newthread — start a fresh conversation (history only; memory is shared)\n"
         "Ask BB to save preferences with save_memory; verify with list_memories."
         f"{trace_hint}"
@@ -379,6 +456,9 @@ def build_application(
     async def on_message(update: Any, context: Any) -> None:
         await handle_message(update, context, config=config, allowed_user_id=allowed)
 
+    async def on_voice(update: Any, context: Any) -> None:
+        await handle_voice(update, context, config=config, allowed_user_id=allowed)
+
     async def on_callback(update: Any, context: Any) -> None:
         await handle_callback(update, context, config=config, allowed_user_id=allowed)
 
@@ -395,6 +475,7 @@ def build_application(
     app.add_handler(CommandHandler("help", on_help))
     app.add_handler(CommandHandler("newthread", on_newthread))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_message))
+    app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, on_voice))
     app.add_handler(CallbackQueryHandler(on_callback))
     return app
 

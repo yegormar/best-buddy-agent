@@ -25,6 +25,10 @@ reliability = [
 ]
 dev = ["pytest>=8.2"]
 telegram = ["python-telegram-bot>=21.0"]
+stt = [
+    "faster-whisper==1.2.1",
+    "ctranslate2==4.7.1",
+]
 gmail = [
     "google-api-python-client>=2.100",
     "google-auth-oauthlib>=1.2",

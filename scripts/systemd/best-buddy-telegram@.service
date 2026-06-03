@@ -1,0 +1,25 @@
+[Unit]
+Description=Best Buddy Telegram agent (%i)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=bestbuddy
+Group=bestbuddy
+EnvironmentFile=-/etc/best-buddy/instances/%i.env
+ExecStart=/usr/local/lib/best-buddy/run-telegram.sh %i
+Restart=on-failure
+RestartSec=10
+
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
+
+# ReadWritePaths / ReadOnlyPaths are generated per instance — see install-systemd-instance.sh
+
+RestrictAddressFamilies=AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

@@ -81,6 +81,25 @@ log_responses = true
 # bot_token =
 # allowed_user_id =
 
+[stt]
+# Telegram voice notes → faster-whisper (local, read-only Hugging Face cache).
+# enabled = false
+# device = auto
+# model = large-v3
+# compute_type_cpu = int8
+# compute_type_cuda = float16
+# beam_size = 10
+# temperature = 0.1
+# best_of = 5
+# patience = 2
+# condition_on_previous_text = true
+# vad_filter = true
+# vad_min_silence_duration_ms = 200
+# hf_home = /opt/huggingface
+# hf_hub_cache = /opt/huggingface/cache
+# language =
+# echo_transcript = true
+
 [workflows]
 # Background scheduler (started by Telegram bot)
 enabled = true

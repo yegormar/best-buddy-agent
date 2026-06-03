@@ -334,6 +334,46 @@ def _check_telegram(settings: TelegramSettings) -> list[CheckResult]:
     return results
 
 
+def _check_stt(config: AgentConfig) -> CheckResult:
+    if not config.stt.enabled:
+        return CheckResult("stt", True, "disabled")
+    try:
+        import faster_whisper  # noqa: F401
+        import ctranslate2  # noqa: F401
+    except ImportError as exc:
+        return CheckResult(
+            "stt",
+            False,
+            f"faster-whisper not installed — pip install -e '.[stt]' ({exc})",
+        )
+
+    from .transcription import configure_stt
+    from .transcription.startup import TranscriptionStartupError
+
+    stt = config.stt
+    try:
+        runtime = configure_stt(
+            device_mode=stt.device,
+            model_name=stt.model,
+            compute_type_cpu=stt.compute_type_cpu,
+            compute_type_cuda=stt.compute_type_cuda,
+            transcribe_kwargs=stt.transcribe_kwargs(),
+            hf_home=stt.hf_home,
+            hf_hub_cache=stt.hf_hub_cache,
+            language=stt.language,
+        )
+    except TranscriptionStartupError as exc:
+        return CheckResult("stt", False, str(exc))
+    except Exception as exc:
+        return CheckResult("stt", False, f"STT startup failed: {exc}")
+
+    return CheckResult(
+        "stt",
+        True,
+        f"model={runtime.model_name} device={runtime.device} compute_type={runtime.compute_type}",
+    )
+
+
 def _check_memory_index() -> CheckResult:
     index = _data_dir() / "memory_vectors" / "index.faiss"
     if not index.exists():
@@ -377,6 +417,7 @@ def run_startup_checks(
     if profile in ("telegram", "all"):
         tg = load_telegram_settings(conf_path)
         results.extend(_check_telegram(tg))
+        results.append(_check_stt(config))
     elif profile == "chat":
         tg = load_telegram_settings(conf_path)
         if tg.enabled:

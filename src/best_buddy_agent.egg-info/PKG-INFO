@@ -19,6 +19,9 @@ Provides-Extra: dev
 Requires-Dist: pytest>=8.2; extra == "dev"
 Provides-Extra: telegram
 Requires-Dist: python-telegram-bot>=21.0; extra == "telegram"
+Provides-Extra: stt
+Requires-Dist: faster-whisper==1.2.1; extra == "stt"
+Requires-Dist: ctranslate2==4.7.1; extra == "stt"
 Provides-Extra: gmail
 Requires-Dist: google-api-python-client>=2.100; extra == "gmail"
 Requires-Dist: google-auth-oauthlib>=1.2; extra == "gmail"

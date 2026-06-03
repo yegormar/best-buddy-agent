@@ -25,5 +25,9 @@ google-auth-httplib2>=0.2
 pydantic-deep>=0.3
 summarization-pydantic-ai>=0.1
 
+[stt]
+faster-whisper==1.2.1
+ctranslate2==4.7.1
+
 [telegram]
 python-telegram-bot>=21.0

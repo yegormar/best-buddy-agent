@@ -92,6 +92,39 @@ class TelegramSettings:
         return bool(self.bot_token and self.allowed_user_id is not None)
 
 
+@dataclass(slots=True)
+class SttSettings:
+    """Local faster-whisper STT ([stt] section)."""
+
+    enabled: bool = False
+    device: str = "auto"
+    model: str = "large-v3"
+    compute_type_cpu: str = "int8"
+    compute_type_cuda: str = "float16"
+    beam_size: int = 5
+    temperature: float = 0.0
+    best_of: int = 5
+    patience: float = 1.0
+    condition_on_previous_text: bool = True
+    vad_filter: bool = True
+    vad_min_silence_duration_ms: int = 200
+    hf_home: str = ""
+    hf_hub_cache: str = ""
+    language: str | None = None
+    echo_transcript: bool = True
+
+    def transcribe_kwargs(self) -> dict[str, object]:
+        return {
+            "beam_size": self.beam_size,
+            "temperature": self.temperature,
+            "best_of": self.best_of,
+            "patience": self.patience,
+            "condition_on_previous_text": self.condition_on_previous_text,
+            "vad_filter": self.vad_filter,
+            "vad_parameters": {"min_silence_duration_ms": self.vad_min_silence_duration_ms},
+        }
+
+
 def parse_llm_num_ctx_value(raw: str) -> int:
     s = (raw or "").strip().replace(" ", "")
     if not s:
@@ -133,6 +166,7 @@ class AgentConfig:
     web: WebSettings = field(default_factory=WebSettings)
     workflows: WorkflowSettings = field(default_factory=WorkflowSettings)
     deadline_watch: DeadlineWatchSettings = field(default_factory=DeadlineWatchSettings)
+    stt: SttSettings = field(default_factory=SttSettings)
 
     @property
     def ollama_base_url(self) -> str:
@@ -338,6 +372,7 @@ def load_config(conf_file: str | None = None) -> AgentConfig:
     web = _load_web_settings(parser)
     workflows = _load_workflow_settings(parser)
     deadline_watch = _load_deadline_watch_settings(parser)
+    stt = _load_stt_settings(parser, path)
 
     return AgentConfig(
         llm_host=llm["llm_host"].strip(),
@@ -367,6 +402,91 @@ def load_config(conf_file: str | None = None) -> AgentConfig:
         web=web,
         workflows=workflows,
         deadline_watch=deadline_watch,
+        stt=stt,
+    )
+
+
+def _require_stt_key(section: dict, key: str) -> str:
+    raw = str(section.get(key, "")).strip()
+    if not raw:
+        raise ConfigError(f"[stt] requires {key} when enabled = true")
+    return raw
+
+
+def _load_stt_settings(parser: ConfigParser, conf_file: Path) -> SttSettings:
+    if "stt" not in parser:
+        return SttSettings(enabled=False)
+    section = parser["stt"]
+    enabled = _load_bool(section, "enabled", "false")
+    if not enabled:
+        return SttSettings(enabled=False)
+
+    device = _require_stt_key(section, "device").lower()
+    if device not in ("auto", "cpu", "cuda"):
+        raise ConfigError("stt.device must be auto, cpu, or cuda")
+
+    model = _require_stt_key(section, "model")
+    compute_type_cpu = _require_stt_key(section, "compute_type_cpu")
+    compute_type_cuda = _require_stt_key(section, "compute_type_cuda")
+
+    hf_home_raw = _require_stt_key(section, "hf_home")
+    hf_hub_raw = _require_stt_key(section, "hf_hub_cache")
+    hf_home = str(_resolve_conf_path(hf_home_raw, conf_file))
+    hf_hub_cache = str(_resolve_conf_path(hf_hub_raw, conf_file))
+    for label, p in (("hf_home", hf_home), ("hf_hub_cache", hf_hub_cache)):
+        if not Path(p).is_dir():
+            raise ConfigError(f"stt.{label} must be an existing directory (got {p!r})")
+
+    def _int_key(key: str, lo: int, hi: int) -> int:
+        raw = _require_stt_key(section, key)
+        try:
+            val = int(raw)
+        except ValueError as exc:
+            raise ConfigError(f"stt.{key} must be an integer") from exc
+        if val < lo or val > hi:
+            raise ConfigError(f"stt.{key} must be between {lo} and {hi}")
+        return val
+
+    def _float_key(key: str, lo: float, hi: float) -> float:
+        raw = _require_stt_key(section, key)
+        try:
+            val = float(raw)
+        except ValueError as exc:
+            raise ConfigError(f"stt.{key} must be a number") from exc
+        if val < lo or val > hi:
+            raise ConfigError(f"stt.{key} must be between {lo} and {hi}")
+        return val
+
+    beam_size = _int_key("beam_size", 1, 20)
+    best_of = _int_key("best_of", 1, 20)
+    patience = _float_key("patience", 0.0, 10.0)
+    temperature = _float_key("temperature", 0.0, 1.0)
+    vad_ms = _int_key("vad_min_silence_duration_ms", 0, 30_000)
+
+    condition_on_previous_text = _load_bool(section, "condition_on_previous_text", "true")
+    vad_filter = _load_bool(section, "vad_filter", "true")
+    echo_transcript = _load_bool(section, "echo_transcript", "true")
+
+    lang_raw = str(section.get("language", "")).strip()
+    language = lang_raw or None
+
+    return SttSettings(
+        enabled=True,
+        device=device,
+        model=model,
+        compute_type_cpu=compute_type_cpu,
+        compute_type_cuda=compute_type_cuda,
+        beam_size=beam_size,
+        temperature=temperature,
+        best_of=best_of,
+        patience=patience,
+        condition_on_previous_text=condition_on_previous_text,
+        vad_filter=vad_filter,
+        vad_min_silence_duration_ms=vad_ms,
+        hf_home=hf_home,
+        hf_hub_cache=hf_hub_cache,
+        language=language,
+        echo_transcript=echo_transcript,
     )
 
 

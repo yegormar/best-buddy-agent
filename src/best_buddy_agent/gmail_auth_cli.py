@@ -20,6 +20,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Print Gmail config/token status and exit",
     )
+    parser.add_argument(
+        "--no-browser",
+        action="store_true",
+        help="Headless: print OAuth URL and paste authorization code (no local browser)",
+    )
     args = parser.parse_args(argv)
 
     try:
@@ -52,6 +57,7 @@ def main(argv: list[str] | None = None) -> int:
         tp = gc.run_oauth_flow(
             credentials=cfg.gmail.credentials_path,
             token=cfg.gmail.token_path,
+            no_browser=args.no_browser,
         )
     except gc.GmailError as exc:
         print(f"OAuth failed: {exc}", file=sys.stderr)

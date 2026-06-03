@@ -9,7 +9,7 @@ Best Buddy can run as a **Telegram bot** (text chat, long polling). The bot is a
 3. Install the Telegram extra:
 
 ```bash
-pip install -e '.[telegram,faiss,reliability]'
+pip install -e '.[telegram,stt,faiss,reliability]'
 ```
 
 4. Set secrets (preferred over putting tokens in the conf file):
@@ -51,6 +51,22 @@ Use `/newthread` in Telegram to start a fresh chat history; saved facts remain i
 
 Tools `delete_memory` and `write_file` require human approval. The bot sends **Approve** / **Deny** buttons. New messages are blocked until you respond.
 
+## Voice messages (optional)
+
+Enable local transcription in `conf/best_buddy_agent.conf` (see `[stt]` in `best_buddy_agent.conf.example`). Voice notes and audio attachments are transcribed with **faster-whisper** on GPU when `device = auto` and CUDA is available, otherwise CPU.
+
+Production env (systemd `/etc/best-buddy/env`):
+
+```bash
+LD_LIBRARY_PATH=/usr/local/lib/ollama/cuda_v12
+HF_HOME=/opt/huggingface
+HF_HUB_CACHE=/opt/huggingface/cache
+```
+
+Models are loaded with `local_files_only=true` (read-only cache; no Hub downloads at runtime). Prefetch `large-v3` into `hf_hub_cache` before enabling STT.
+
+Startup runs a full STT self-test when `[stt] enabled = true` (same as `best-buddy-agent-doctor --profile telegram`).
+
 ## Commands
 
 - `/start` — welcome
@@ -60,6 +76,8 @@ Tools `delete_memory` and `write_file` require human approval. The bot sends **A
 ## Troubleshooting
 
 - **Config error: python-telegram-bot** — run `pip install -e '.[telegram]'`.
+- **STT startup failed / libcublas** — set `LD_LIBRARY_PATH=/usr/local/lib/ollama/cuda_v12` and install `pip install -e '.[stt]'`.
+- **Model not available locally** — prefetch faster-whisper weights into `hf_hub_cache` (see `[stt]` paths in conf).
 - **Ollama errors** — the host running the bot must reach `llm_host` in your conf (same as CLI).
 - **Trace log** — if `[logging] enabled = true`, use the path printed at startup (`tail -f ...`).
 

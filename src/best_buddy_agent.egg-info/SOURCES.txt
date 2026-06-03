@@ -69,6 +69,10 @@ src/best_buddy_agent/tools/gmail_tools.py
 src/best_buddy_agent/tools/memory_tools.py
 src/best_buddy_agent/tools/web_tools.py
 src/best_buddy_agent/tools/workflow_tools.py
+src/best_buddy_agent/transcription/__init__.py
+src/best_buddy_agent/transcription/huggingface_env.py
+src/best_buddy_agent/transcription/service.py
+src/best_buddy_agent/transcription/startup.py
 tests/test_agent_context.py
 tests/test_agent_runtime.py
 tests/test_agent_trace.py
@@ -93,10 +97,12 @@ tests/test_orchestrator.py
 tests/test_prompt_bundles.py
 tests/test_prompts_from_files.py
 tests/test_startup_check.py
+tests/test_stt_config.py
 tests/test_telegram_auth.py
 tests/test_telegram_format.py
 tests/test_telegram_notifier.py
 tests/test_telegram_turn.py
+tests/test_telegram_voice.py
 tests/test_tools_package.py
 tests/test_web_tools.py
 tests/test_workflow_engine.py
