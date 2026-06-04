@@ -80,6 +80,8 @@ log_responses = true
 # enabled = false
 # bot_token =
 # allowed_user_id =
+# message_format = html
+# plain = no Markdown-to-HTML conversion (legacy behavior)
 
 [stt]
 # Telegram voice notes → faster-whisper (local, read-only Hugging Face cache).
@@ -99,6 +101,14 @@ log_responses = true
 # hf_hub_cache = /opt/huggingface/cache
 # language =
 # echo_transcript = true
+
+[vision]
+# Telegram photos → native multimodal turn (Ollama model must support vision).
+# After each photo turn, pixels are stripped from thread history; only
+# tg_photo_yyyy_mm_dd_HH_MM_SS.jpg remains. Follow-ups use revisit_image.
+# enabled = false
+# max_image_bytes = 10485760
+# file_prefix = tg_photo
 
 [workflows]
 # Background scheduler (started by Telegram bot)

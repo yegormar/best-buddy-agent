@@ -74,6 +74,19 @@ def test_load_telegram_settings_from_env(monkeypatch):
     assert settings.bot_token == "tok123"
     assert settings.allowed_user_id == 4242
     assert settings.enabled is True
+    assert settings.message_format == "html"
+
+
+def test_format_interrupt_plain_mode():
+    intr = InterruptResult(
+        tool_name="delete_memory",
+        tool_call_id="call-1",
+        args={"memory_id": "abc"},
+        message="Delete this memory?",
+    )
+    text = tg.format_interrupt(intr, message_format="plain")
+    assert "Delete this memory?" in text
+    assert "**" not in text
 
 
 def test_validate_telegram_startup_errors():

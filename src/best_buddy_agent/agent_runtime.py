@@ -24,13 +24,16 @@ from .context_layer import assemble_context
 from .exceptions import AgentEmptyResponseError
 from .memory_layer import recall_context_for_turn_with_meta
 from .model_factory import agent_config_fingerprint, build_ollama_model
+from .multimodal import UserImage, build_native_user_prompt, image_trace_summary
 from .threads import append_turn_messages, load_thread_message_history, thread_conversation_rows
 from .tools import filesystem as fs_tools
 from .tools import calendar_tools
 from .tools import gmail_tools as gmail_tools
 from .tools import memory_tools as mem_tools
 from .tools import workflow_tools as wf_tools
+from .tools import vision_tools
 from .tools import web_tools
+from .vision_cache import strip_images_for_storage
 
 TurnResult = str | InterruptResult
 
@@ -112,6 +115,8 @@ def _compose_instructions(
         parts.append(prompts.get("fragments/gmail_available"))
     if cfg.web.enabled:
         parts.append(prompts.get("fragments/web_available"))
+    if cfg.vision.enabled:
+        parts.append(prompts.get("fragments/vision_available"))
     if cfg.calendar.is_ready():
         parts.append(prompts.get("fragments/calendar_available"))
     elif cfg.deadline_watch.enabled:
@@ -147,6 +152,7 @@ def _trace_tool_invoke(
         wf_tools.ToolError,
         gmail_tools.ToolError,
         web_tools.ToolError,
+        vision_tools.ToolError,
     ) as exc:
         message = str(exc)
         agent_trace.trace_tool_result(config, name, message, error=True)
@@ -661,6 +667,24 @@ def _register_tools(
         ):
             _bind_tool(agent, prompts, name, fn)
 
+    if config.vision.enabled:
+
+        def revisit_image(
+            ctx: RunContext[BestBuddyDeps],
+            image_name: str,
+            question: str,
+        ) -> str:
+            return _trace_tool_invoke(
+                ctx.deps.config,
+                "revisit_image",
+                {"image_name": image_name, "question": question[:200]},
+                lambda: vision_tools.revisit_image(
+                    ctx.deps.config, image_name, question
+                ),
+            )
+
+        _bind_tool(agent, prompts, "revisit_image", revisit_image)
+
 
 def build_agent(
     config: AgentConfig,
@@ -739,6 +763,7 @@ def _run_agent_sync(
     deferred_tool_results: DeferredToolResults | None,
     persist_thread: bool = True,
     memory_source: str | None = None,
+    user_images: list[UserImage] | None = None,
 ) -> TurnResult:
     deps = BestBuddyDeps(
         config=config,
@@ -749,15 +774,20 @@ def _run_agent_sync(
         memory_source=memory_source,
     )
     model_label = getattr(agent.model, "model_name", str(config.llm_model))
+    images = user_images or []
+    image_summary = image_trace_summary(images)
     agent_trace.trace_turn_start(
         config,
         thread_id=thread_id,
         user_text=user_text,
         workflow_context=workflow_context,
         model_label=model_label,
+        image_summary=image_summary,
     )
 
     history = message_history if message_history is not None else thread_to_message_history(thread_id)
+    if config.vision.enabled and history:
+        history = strip_images_for_storage(history)
     instructions_text, memory_block, recall_meta = _compose_instructions(deps, user_text)
     agent_trace.trace_instructions(config, instructions_text)
     agent_trace.trace_message_history(config, history)
@@ -778,10 +808,12 @@ def _run_agent_sync(
         tool_calls_limit=config.max_tool_iterations,
     )
 
+    run_input = build_native_user_prompt(user_text, images)
+
     t0 = time.perf_counter()
     try:
         result = agent.run_sync(
-            user_text,
+            run_input,
             deps=deps,
             message_history=history,
             usage_limits=limits,
@@ -828,7 +860,12 @@ def _run_agent_sync(
             message_count=len(messages),
         )
         if persist_thread and new_messages:
-            append_turn_messages(thread_id, new_messages)
+            stored = (
+                strip_images_for_storage(new_messages)
+                if config.vision.enabled
+                else new_messages
+            )
+            append_turn_messages(thread_id, stored)
         if approval_resolver is None:
             return InterruptResult(
                 tool_name=first_name,
@@ -836,7 +873,11 @@ def _run_agent_sync(
                 args=first_args,
                 message=f"Approval required for {first_name}",
                 pending=pending,
-                message_history=list(messages),
+                message_history=(
+                    strip_images_for_storage(list(messages))
+                    if config.vision.enabled
+                    else list(messages)
+                ),
             )
         deferred = _resolve_deferred(deps, output)
         if deferred is None:
@@ -845,7 +886,11 @@ def _run_agent_sync(
                 tool_call_id=first_id,
                 args=first_args,
                 pending=pending,
-                message_history=list(messages),
+                message_history=(
+                    strip_images_for_storage(list(messages))
+                    if config.vision.enabled
+                    else list(messages)
+                ),
             )
         return run_turn(
             config,
@@ -854,7 +899,11 @@ def _run_agent_sync(
             workflow_context=workflow_context,
             approval_resolver=approval_resolver,
             deferred_tool_results=deferred,
-            message_history=messages,
+            message_history=(
+                strip_images_for_storage(list(messages))
+                if config.vision.enabled
+                else messages
+            ),
             _agent=agent,
             persist_thread=persist_thread,
             memory_source=deps.memory_source,
@@ -870,7 +919,12 @@ def _run_agent_sync(
     if not text:
         raise AgentEmptyResponseError("Model run completed without text output")
     if persist_thread and new_messages:
-        append_turn_messages(thread_id, new_messages)
+        stored = (
+            strip_images_for_storage(new_messages)
+            if config.vision.enabled
+            else new_messages
+        )
+        append_turn_messages(thread_id, stored)
     return text
 
 
@@ -899,6 +953,7 @@ def run_turn(
     persist_thread: bool = True,
     timeout_sec: int = 90,  # noqa: ARG001
     memory_source: str | None = None,
+    user_images: list[UserImage] | None = None,
     _agent: Agent[BestBuddyDeps, TurnResult] | None = None,
 ) -> TurnResult:
     agent = _agent or get_agent(config)
@@ -913,6 +968,7 @@ def run_turn(
         deferred_tool_results=deferred_tool_results,
         persist_thread=persist_thread,
         memory_source=memory_source,
+        user_images=user_images,
     )
 
 

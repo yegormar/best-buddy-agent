@@ -26,6 +26,7 @@ src/best_buddy_agent/memory_import_runner.py
 src/best_buddy_agent/memory_layer.py
 src/best_buddy_agent/memory_recall.py
 src/best_buddy_agent/model_factory.py
+src/best_buddy_agent/multimodal.py
 src/best_buddy_agent/orchestrator.py
 src/best_buddy_agent/prompt_loader.py
 src/best_buddy_agent/prompts.py
@@ -36,6 +37,7 @@ src/best_buddy_agent/system_test_cli.py
 src/best_buddy_agent/threads.py
 src/best_buddy_agent/trace_logging.py
 src/best_buddy_agent/validation.py
+src/best_buddy_agent/vision_cache.py
 src/best_buddy_agent/wiki_vault.py
 src/best_buddy_agent/workflow_engine.py
 src/best_buddy_agent/workflow_models.py
@@ -67,6 +69,7 @@ src/best_buddy_agent/tools/calendar_tools.py
 src/best_buddy_agent/tools/filesystem.py
 src/best_buddy_agent/tools/gmail_tools.py
 src/best_buddy_agent/tools/memory_tools.py
+src/best_buddy_agent/tools/vision_tools.py
 src/best_buddy_agent/tools/web_tools.py
 src/best_buddy_agent/tools/workflow_tools.py
 src/best_buddy_agent/transcription/__init__.py
@@ -92,18 +95,23 @@ tests/test_memory_context.py
 tests/test_memory_core.py
 tests/test_memory_import_runner.py
 tests/test_memory_tools_graph.py
+tests/test_multimodal.py
 tests/test_no_duplicate_user.py
 tests/test_orchestrator.py
 tests/test_prompt_bundles.py
 tests/test_prompts_from_files.py
+tests/test_revisit_image_tool.py
 tests/test_startup_check.py
 tests/test_stt_config.py
 tests/test_telegram_auth.py
 tests/test_telegram_format.py
 tests/test_telegram_notifier.py
+tests/test_telegram_photo.py
 tests/test_telegram_turn.py
 tests/test_telegram_voice.py
 tests/test_tools_package.py
+tests/test_vision_cache.py
+tests/test_vision_config.py
 tests/test_web_tools.py
 tests/test_workflow_engine.py
 tests/test_workflow_notify_only.py

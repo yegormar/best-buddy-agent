@@ -5,9 +5,20 @@ from __future__ import annotations
 import os
 import pathlib
 import sqlite3
+from collections.abc import Sequence
 from datetime import datetime
 
-from pydantic_ai.messages import ModelMessage, ModelMessagesTypeAdapter, ModelRequest, ModelResponse, TextPart, UserPromptPart
+from pydantic_ai.messages import (
+    BinaryContent,
+    ImageUrl,
+    ModelMessage,
+    ModelMessagesTypeAdapter,
+    ModelRequest,
+    ModelResponse,
+    TextPart,
+    UserContent,
+    UserPromptPart,
+)
 
 _DATA_DIR = pathlib.Path(
     os.environ.get("BEST_BUDDY_AGENT_DATA_DIR", pathlib.Path.home() / ".best_buddy_agent")
@@ -65,6 +76,27 @@ def append_turn_messages(thread_id: str, messages: list[ModelMessage]) -> None:
     c.close()
 
 
+def user_prompt_content_text(content: str | Sequence[UserContent]) -> str:
+    """Flatten user prompt for context, memory, and trace (no binary payloads)."""
+    if isinstance(content, str):
+        return (content or "").strip()
+    if not content:
+        return ""
+    lines: list[str] = []
+    for item in content:
+        if isinstance(item, str):
+            text = item.strip()
+            if text:
+                lines.append(text)
+        elif isinstance(item, (ImageUrl, BinaryContent)):
+            lines.append("[image]")
+        else:
+            text = str(item).strip()
+            if text:
+                lines.append(text)
+    return "\n".join(lines).strip()
+
+
 def load_thread_message_history(thread_id: str) -> list[ModelMessage]:
     """Load full pydantic-ai history for a thread."""
     c = _conn()
@@ -86,7 +118,7 @@ def thread_conversation_rows(thread_id: str) -> list[dict[str, str]]:
         if isinstance(msg, ModelRequest):
             for part in msg.parts:
                 if isinstance(part, UserPromptPart):
-                    content = (part.content or "").strip()
+                    content = user_prompt_content_text(part.content)
                     if content:
                         rows.append({"role": "user", "content": content})
         elif isinstance(msg, ModelResponse):

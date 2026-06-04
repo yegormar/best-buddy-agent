@@ -16,6 +16,7 @@ PROMPT_FILES: dict[str, str] = {
     "fragments/workflow_context_header": "fragments/workflow_context_header.txt",
     "fragments/gmail_available": "fragments/gmail_available.txt",
     "fragments/web_available": "fragments/web_available.txt",
+    "fragments/vision_available": "fragments/vision_available.txt",
     "fragments/calendar_available": "fragments/calendar_available.txt",
     "fragments/deadline_watch": "fragments/deadline_watch.txt",
     "background/extraction": "background/extraction.txt",
@@ -60,6 +61,7 @@ TOOL_NAMES: tuple[str, ...] = (
     "update_calendar_event",
     "web_search",
     "fetch_url",
+    "revisit_image",
 )
 
 

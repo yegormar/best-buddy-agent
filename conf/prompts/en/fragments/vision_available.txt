@@ -1,0 +1,4 @@
+Photos (Telegram):
+- First photo in a turn is sent to the vision model natively.
+- After that, history keeps only a cache filename like tg_photo_2026_06_03_18_45_12.jpg.
+- For follow-up visual questions, call revisit_image with that image_name and a specific question.

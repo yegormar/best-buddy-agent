@@ -11,6 +11,7 @@ log = logging.getLogger(__name__)
 _bot: Any = None
 _loop: asyncio.AbstractEventLoop | None = None
 _chat_id: int | None = None
+_message_format: str = "html"
 
 
 def register_telegram_notifier(
@@ -18,13 +19,21 @@ def register_telegram_notifier(
     loop: asyncio.AbstractEventLoop,
     *,
     chat_id: int,
+    message_format: str = "html",
 ) -> None:
     """Register the running PTB bot for cross-thread proactive sends."""
-    global _bot, _loop, _chat_id
+    global _bot, _loop, _chat_id, _message_format
+    from ..channels.telegram_format import normalize_message_format
+
     _bot = bot
     _loop = loop
     _chat_id = int(chat_id)
-    log.info("Telegram proactive notifier registered (chat_id=%s)", chat_id)
+    _message_format = normalize_message_format(message_format)
+    log.info(
+        "Telegram proactive notifier registered (chat_id=%s, message_format=%s)",
+        chat_id,
+        _message_format,
+    )
 
 
 def is_registered() -> bool:
@@ -36,19 +45,34 @@ async def _send_async(
     *,
     reply_markup: Any = None,
     parse_mode: str | None = None,
+    message_format: str | None = None,
 ) -> None:
     if _bot is None or _chat_id is None:
         raise RuntimeError("Telegram notifier not registered")
-    from ..channels.telegram_format import split_message
+    from ..channels.telegram_format import prepare_telegram_chunks, strip_html_to_plain
 
-    chunks = split_message(text or "_(empty)_")
-    for i, chunk in enumerate(chunks):
-        await _bot.send_message(
-            chat_id=_chat_id,
-            text=chunk,
-            reply_markup=reply_markup if i == 0 else None,
-            parse_mode=parse_mode,
-        )
+    fmt = message_format if message_format is not None else _message_format
+    if parse_mode is not None:
+        chunks = [(text or "_(empty)_", parse_mode)]
+    else:
+        chunks = prepare_telegram_chunks(text, fmt)
+
+    for i, (chunk, chunk_parse_mode) in enumerate(chunks):
+        try:
+            await _bot.send_message(
+                chat_id=_chat_id,
+                text=chunk,
+                reply_markup=reply_markup if i == 0 else None,
+                parse_mode=chunk_parse_mode,
+            )
+        except Exception:
+            plain = strip_html_to_plain(chunk) if chunk_parse_mode else chunk
+            await _bot.send_message(
+                chat_id=_chat_id,
+                text=plain,
+                reply_markup=reply_markup if i == 0 else None,
+                parse_mode=None,
+            )
 
 
 def send_proactive(

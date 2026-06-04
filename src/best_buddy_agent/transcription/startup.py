@@ -99,7 +99,15 @@ def _validate_faster_whisper(
         )
     except Exception as exc:
         msg = f"STT startup failed loading faster-whisper on {device}: {exc}"
-        msg = f"{msg}\n\n{_offline_model_help(model_name, hf_home=hf_home, hf_hub_cache=hf_hub_cache)}"
+        err = str(exc).lower()
+        if "out of memory" in err or "cuda" in err and "memory" in err:
+            msg = (
+                f"{msg}\n\nGPU VRAM is likely full (e.g. Ollama + another STT instance). "
+                "Use stt.device = cpu on this instance, a smaller model, or disable [stt] "
+                "if you only need photos/text."
+            )
+        else:
+            msg = f"{msg}\n\n{_offline_model_help(model_name, hf_home=hf_home, hf_hub_cache=hf_hub_cache)}"
         raise TranscriptionStartupError(msg) from exc
 
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:

@@ -1,0 +1,9 @@
+Reload a photo the user sent earlier and answer a follow-up question with native vision.
+
+Use when the user asks for more detail about an image already in the thread. Chat history only keeps the cache filename (e.g. tg_photo_2026_06_03_18_45_12.jpg), not the pixels.
+
+Arguments:
+- image_name: exact filename from the [Cached photo: ...] line in history
+- question: what to look for in the image
+
+Do not call on the same turn the user just sent a new photo (pixels are already attached).

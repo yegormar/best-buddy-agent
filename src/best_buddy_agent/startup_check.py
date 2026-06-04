@@ -374,6 +374,40 @@ def _check_stt(config: AgentConfig) -> CheckResult:
     )
 
 
+def _check_vision(config: AgentConfig) -> CheckResult:
+    if not config.vision.enabled:
+        return CheckResult("vision", True, "disabled")
+    try:
+        payload = json.dumps({"name": config.llm_model}).encode("utf-8")
+        req = urllib.request.Request(
+            f"{config.ollama_base_url}/api/show",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+    except Exception as exc:
+        return CheckResult(
+            "vision",
+            False,
+            f"could not verify Ollama vision for {config.llm_model!r}: {exc}",
+        )
+
+    caps = body.get("capabilities") or []
+    if isinstance(caps, list) and "vision" in caps:
+        return CheckResult(
+            "vision",
+            True,
+            f"native vision via {config.llm_model!r} (max_image_bytes={config.vision.max_image_bytes})",
+        )
+    return CheckResult(
+        "vision",
+        False,
+        f"llm_model {config.llm_model!r} has no vision capability on Ollama (capabilities={caps})",
+    )
+
+
 def _check_memory_index() -> CheckResult:
     index = _data_dir() / "memory_vectors" / "index.faiss"
     if not index.exists():
@@ -418,6 +452,7 @@ def run_startup_checks(
         tg = load_telegram_settings(conf_path)
         results.extend(_check_telegram(tg))
         results.append(_check_stt(config))
+        results.append(_check_vision(config))
     elif profile == "chat":
         tg = load_telegram_settings(conf_path)
         if tg.enabled:

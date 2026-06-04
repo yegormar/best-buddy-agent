@@ -365,6 +365,7 @@ After any `pip install`, restart the service (running process does not load new 
 | `Read-only file system` on trace.log         | `ReadWritePaths` must include `%h/log`; `bestbuddy` home (`useradd -d`) must match `WorkingDirectory` |
 | systemd start fails after hardening          | `getent passwd bestbuddy` home must equal `WorkingDirectory`; see `journalctl -u best-buddy-telegram` |
 | Permission denied on log/data                | `chown -R bestbuddy:bestbuddy /opt/best-buddy-agent`                                                  |
+| Doctor STT `CUDA … out of memory` on 2nd instance | GPU already holds Ollama + first bot’s `large-v3`; doctor loads Whisper again. `large-v3` **is** cached under `/opt/huggingface/cache`. Set `stt.device = cpu` (or `enabled = false`) on the second instance’s conf. Run doctor with `source /etc/best-buddy/env_andrey`. |
 
 
 ---

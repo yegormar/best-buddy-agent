@@ -67,6 +67,44 @@ Models are loaded with `local_files_only=true` (read-only cache; no Hub download
 
 Startup runs a full STT self-test when `[stt] enabled = true` (same as `best-buddy-agent-doctor --profile telegram`).
 
+## Photos (optional, native vision)
+
+Enable in `conf/best_buddy_agent.conf` (see `[vision]` in `best_buddy_agent.conf.example`). Captured **photos** (not documents or albums yet) are downloaded from Telegram and passed to the same agent turn as **text + image** via pydantic-ai `BinaryContent` — the configured Ollama model must list `vision` in its capabilities (`ollama show <model>`).
+
+```ini
+[vision]
+enabled = true
+max_image_bytes = 10485760
+```
+
+Use a caption on the photo for your question; without a caption the bot sends a default prompt (`The user sent a photo.`). Trace logs record image size and media type, not raw bytes.
+
+After the first turn, **pixels are removed from thread history**. Only a cache filename remains (default pattern `tg_photo_yyyy_mm_dd_HH_MM_SS.jpg` under `~/.best_buddy_agent/vision_cache/`). For follow-up visual questions, the agent calls **`revisit_image`** with that `image_name` to reload the file natively.
+
+```ini
+[vision]
+enabled = true
+file_prefix = tg_photo
+```
+
+Startup verifies vision when `[vision] enabled = true` (`best-buddy-agent-doctor --profile telegram`).
+
+## Message formatting
+
+By default (`message_format = html` in `[telegram]`), the bot post-processes agent replies before sending:
+
+- The model can use normal Markdown (`**bold**`, `` `code` ``, fenced blocks, `# headings`, pipe tables).
+- GFM pipe tables are rewritten as bold row headings plus `• column: value` bullets (Telegram has no table HTML).
+- The channel converts that subset to Telegram HTML and sends with `parse_mode=HTML`.
+- Long replies are split on plain-text boundaries first, then each chunk is converted (avoids breaking HTML tags).
+- If Telegram rejects a chunk, the same chunk is resent as plain text (tags stripped).
+
+Proactive messages (reminders, deadline proposals) use the same formatting.
+
+Set `message_format = plain` under `[telegram]` to disable conversion (raw text, including visible `**` markers).
+
+No extra prompt rules are required for the model.
+
 ## Commands
 
 - `/start` — welcome

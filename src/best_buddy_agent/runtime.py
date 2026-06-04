@@ -5,6 +5,7 @@ from __future__ import annotations
 import time
 
 from .agent_runtime import InterruptResult, TurnResult, run_turn
+from .multimodal import UserImage
 from .config import AgentConfig
 from .threads import create_thread
 from .trace_logging import trace_block
@@ -19,6 +20,7 @@ def chat_once(
     approval_resolver=None,
     pending_interrupt: InterruptResult | None = None,
     interrupt_approved: bool | None = None,
+    user_images: list[UserImage] | None = None,
 ) -> TurnResult:
     """Run one chat turn; history persisted in thread_message_batches by run_turn."""
     turn_t0 = time.perf_counter()
@@ -49,6 +51,7 @@ def chat_once(
             user_text,
             timeout_sec=timeout_sec,
             approval_resolver=approval_resolver,
+            user_images=user_images,
         )
 
     elapsed_ms = int((time.perf_counter() - turn_t0) * 1000)

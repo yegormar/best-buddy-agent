@@ -87,6 +87,7 @@ class TelegramSettings:
     enabled: bool = False
     bot_token: str = ""
     allowed_user_id: int | None = None
+    message_format: str = "html"
 
     def is_configured(self) -> bool:
         return bool(self.bot_token and self.allowed_user_id is not None)
@@ -123,6 +124,15 @@ class SttSettings:
             "vad_filter": self.vad_filter,
             "vad_parameters": {"min_silence_duration_ms": self.vad_min_silence_duration_ms},
         }
+
+
+@dataclass(slots=True)
+class VisionSettings:
+    """Native multimodal vision for Telegram photos ([vision] section)."""
+
+    enabled: bool = False
+    max_image_bytes: int = 10_485_760
+    file_prefix: str = "tg_photo"
 
 
 def parse_llm_num_ctx_value(raw: str) -> int:
@@ -167,6 +177,7 @@ class AgentConfig:
     workflows: WorkflowSettings = field(default_factory=WorkflowSettings)
     deadline_watch: DeadlineWatchSettings = field(default_factory=DeadlineWatchSettings)
     stt: SttSettings = field(default_factory=SttSettings)
+    vision: VisionSettings = field(default_factory=VisionSettings)
 
     @property
     def ollama_base_url(self) -> str:
@@ -373,6 +384,7 @@ def load_config(conf_file: str | None = None) -> AgentConfig:
     workflows = _load_workflow_settings(parser)
     deadline_watch = _load_deadline_watch_settings(parser)
     stt = _load_stt_settings(parser, path)
+    vision = _load_vision_settings(parser)
 
     return AgentConfig(
         llm_host=llm["llm_host"].strip(),
@@ -403,6 +415,35 @@ def load_config(conf_file: str | None = None) -> AgentConfig:
         workflows=workflows,
         deadline_watch=deadline_watch,
         stt=stt,
+        vision=vision,
+    )
+
+
+def _load_vision_settings(parser: ConfigParser) -> VisionSettings:
+    if "vision" not in parser:
+        return VisionSettings(enabled=False)
+    section = parser["vision"]
+    enabled = _load_bool(section, "enabled", "false")
+    if not enabled:
+        return VisionSettings(enabled=False)
+
+    raw = str(section.get("max_image_bytes", "10485760")).strip()
+    try:
+        max_bytes = int(raw)
+    except ValueError as exc:
+        raise ConfigError("vision.max_image_bytes must be an integer") from exc
+    if max_bytes < 1 or max_bytes > 50_000_000:
+        raise ConfigError("vision.max_image_bytes must be between 1 and 50000000")
+
+    prefix_raw = str(section.get("file_prefix", "tg_photo")).strip() or "tg_photo"
+    if not re.match(r"^[a-zA-Z][a-zA-Z0-9_]*$", prefix_raw):
+        raise ConfigError(
+            "vision.file_prefix must start with a letter and contain only letters, digits, underscores"
+        )
+    return VisionSettings(
+        enabled=True,
+        max_image_bytes=max_bytes,
+        file_prefix=prefix_raw,
     )
 
 
@@ -657,6 +698,7 @@ def load_telegram_settings(conf_file: str | None = None) -> TelegramSettings:
     enabled = False
     bot_token = ""
     allowed_user_id: int | None = None
+    message_format = "html"
 
     if path.is_file():
         parser = ConfigParser()
@@ -669,6 +711,7 @@ def load_telegram_settings(conf_file: str | None = None) -> TelegramSettings:
             raise ConfigError("telegram.enabled must be true or false") from exc
         bot_token = str(tg_section.get("bot_token", "")).strip()
         user_raw = str(tg_section.get("allowed_user_id", "")).strip()
+        message_format = str(tg_section.get("message_format", "html")).strip().lower()
 
         if user_raw.isdigit():
             allowed_user_id = int(user_raw)
@@ -685,10 +728,18 @@ def load_telegram_settings(conf_file: str | None = None) -> TelegramSettings:
     if env_enabled in ConfigParser.BOOLEAN_STATES:
         enabled = ConfigParser.BOOLEAN_STATES[env_enabled]
 
+    from .channels.telegram_format import normalize_message_format
+
+    try:
+        message_format = normalize_message_format(message_format)
+    except ValueError as exc:
+        raise ConfigError(str(exc)) from exc
+
     return TelegramSettings(
         enabled=enabled,
         bot_token=bot_token,
         allowed_user_id=allowed_user_id,
+        message_format=message_format,
     )
 
 

@@ -94,6 +94,7 @@ def trace_turn_start(
     user_text: str,
     workflow_context: dict[str, Any] | None,
     model_label: str,
+    image_summary: str = "",
 ) -> None:
     if not config.log_enabled:
         return
@@ -102,6 +103,8 @@ def trace_turn_start(
         f"model: {model_label}",
         f"user_text:\n{user_text}",
     ]
+    if image_summary:
+        lines.append(f"images:\n{image_summary}")
     if workflow_context:
         lines.append(
             "workflow_context:\n"

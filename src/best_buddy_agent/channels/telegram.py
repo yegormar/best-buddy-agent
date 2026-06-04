@@ -11,9 +11,15 @@ from typing import Any
 
 from ..agent_runtime import InterruptResult, TurnResult, resume_turn
 from ..config import AgentConfig, TelegramSettings
+from ..multimodal import DEFAULT_PHOTO_PROMPT, UserImage
+from ..vision_cache import cache_user_image, format_cache_reference
 from ..runtime import chat_once
 from ..threads import create_thread
-from .telegram_format import split_message
+from .telegram_format import (
+    normalize_message_format,
+    prepare_telegram_chunks,
+    strip_html_to_plain,
+)
 
 log = logging.getLogger(__name__)
 
@@ -51,14 +57,24 @@ def new_thread_id(chat_id: int) -> str:
     return f"telegram:dm:{chat_id}:{suffix}"
 
 
-def format_interrupt(interrupt: InterruptResult) -> str:
-    lines = [
-        interrupt.message or f"Approval required for {interrupt.tool_name or 'tool'}."
-    ]
+def format_interrupt(interrupt: InterruptResult, *, message_format: str = "html") -> str:
+    mode = normalize_message_format(message_format)
+    tool_name = interrupt.tool_name or "tool"
+    message = interrupt.message or f"Approval required for {tool_name}."
+
+    if mode == "plain":
+        lines = [message]
+        if interrupt.tool_name:
+            lines.append(f"Tool: {interrupt.tool_name}")
+        if interrupt.args:
+            lines.append(f"Args: {interrupt.args}")
+        return "\n".join(lines)
+
+    lines = [f"**{message}**" if not message.startswith("**") else message]
     if interrupt.tool_name:
-        lines.append(f"Tool: {interrupt.tool_name}")
+        lines.append(f"**Tool:** {interrupt.tool_name}")
     if interrupt.args:
-        lines.append(f"Args: {interrupt.args}")
+        lines.append(f"`{interrupt.args}`")
     return "\n".join(lines)
 
 
@@ -86,6 +102,8 @@ def run_turn_sync(
     config: AgentConfig,
     thread_id: str,
     user_text: str,
+    *,
+    user_images: list[UserImage] | None = None,
 ) -> TurnResult:
     create_thread(thread_id, name=f"telegram:{thread_id}")
     return chat_once(
@@ -93,6 +111,7 @@ def run_turn_sync(
         thread_id=thread_id,
         user_text=user_text,
         approval_resolver=None,
+        user_images=user_images,
     )
 
 
@@ -111,12 +130,41 @@ def resume_turn_sync(
     )
 
 
-async def send_text_chunks(chat: Any, text: str) -> None:
-    for chunk in split_message(text or "_(No response)_"):
-        await chat.send_message(chunk)
+async def send_formatted_message(
+    chat: Any,
+    text: str,
+    *,
+    message_format: str = "html",
+    reply_markup: Any = None,
+) -> None:
+    """Send *text* in chunks with HTML conversion and plain fallback per chunk."""
+    chunks = prepare_telegram_chunks(text, message_format)
+    for i, (chunk, parse_mode) in enumerate(chunks):
+        kwargs: dict[str, Any] = {}
+        if reply_markup is not None and i == 0:
+            kwargs["reply_markup"] = reply_markup
+        try:
+            await chat.send_message(chunk, parse_mode=parse_mode, **kwargs)
+        except Exception:
+            plain = strip_html_to_plain(chunk) if parse_mode else chunk
+            await chat.send_message(plain, parse_mode=None, **kwargs)
 
 
-async def send_interrupt_prompt(chat: Any, interrupt: InterruptResult) -> None:
+async def send_text_chunks(
+    chat: Any,
+    text: str,
+    *,
+    message_format: str = "html",
+) -> None:
+    await send_formatted_message(chat, text, message_format=message_format)
+
+
+async def send_interrupt_prompt(
+    chat: Any,
+    interrupt: InterruptResult,
+    *,
+    message_format: str = "html",
+) -> None:
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
     keyboard = InlineKeyboardMarkup(
@@ -127,7 +175,13 @@ async def send_interrupt_prompt(chat: Any, interrupt: InterruptResult) -> None:
             ]
         ]
     )
-    await chat.send_message(format_interrupt(interrupt), reply_markup=keyboard)
+    body = format_interrupt(interrupt, message_format=message_format)
+    await send_formatted_message(
+        chat,
+        body,
+        message_format=message_format,
+        reply_markup=keyboard,
+    )
 
 
 def _get_thread_id(context: Any, chat_id: int) -> str:
@@ -144,6 +198,8 @@ async def _run_agent_for_message(
     *,
     config: AgentConfig,
     user_text: str,
+    user_images: list[UserImage] | None = None,
+    message_format: str = "html",
 ) -> None:
     from telegram.ext import ContextTypes
 
@@ -164,7 +220,12 @@ async def _run_agent_for_message(
     try:
         result = await loop.run_in_executor(
             None,
-            lambda: run_turn_sync(config, thread_id, user_text),
+            lambda: run_turn_sync(
+                config,
+                thread_id,
+                user_text,
+                user_images=user_images,
+            ),
         )
     except Exception as exc:
         log.exception("Agent error for chat %s: %s", chat_id, exc)
@@ -179,10 +240,14 @@ async def _run_agent_for_message(
             config=config,
             created_at=time.time(),
         )
-        await send_interrupt_prompt(update.effective_chat, result)
+        await send_interrupt_prompt(
+            update.effective_chat, result, message_format=message_format
+        )
         return
 
-    await send_text_chunks(update.effective_chat, str(result))
+    await send_text_chunks(
+        update.effective_chat, str(result), message_format=message_format
+    )
 
 
 def _voice_file_ext(voice: Any) -> str:
@@ -206,6 +271,7 @@ async def handle_voice(
     *,
     config: AgentConfig,
     allowed_user_id: int,
+    message_format: str = "html",
 ) -> None:
     user = update.effective_user
     if not is_authorized(user.id if user else None, allowed_user_id):
@@ -252,7 +318,75 @@ async def handle_voice(
 
     caption = (update.message.caption or "").strip()
     user_text = f"{caption}\n\n{text}".strip() if caption else text
-    await _run_agent_for_message(update, context, config=config, user_text=user_text)
+    await _run_agent_for_message(
+        update,
+        context,
+        config=config,
+        user_text=user_text,
+        message_format=message_format,
+    )
+
+
+def _photo_media_type() -> str:
+    return "image/jpeg"
+
+
+async def handle_photo(
+    update: Any,
+    context: Any,
+    *,
+    config: AgentConfig,
+    allowed_user_id: int,
+    message_format: str = "html",
+) -> None:
+    user = update.effective_user
+    if not is_authorized(user.id if user else None, allowed_user_id):
+        log.warning("Rejected unauthorized Telegram user %s", getattr(user, "id", None))
+        return
+
+    if not config.vision.enabled:
+        await update.message.reply_text("Photos are not enabled on this bot.")
+        return
+
+    photos = update.message.photo
+    if not photos:
+        return
+
+    msg = update.message
+    largest = photos[-1]
+    try:
+        tg_file = await largest.get_file()
+        data = await tg_file.download_as_bytearray()
+    except Exception as exc:
+        log.error("Failed to download photo: %s", exc)
+        await msg.reply_text("Could not download your photo.")
+        return
+
+    raw = bytes(data)
+    max_bytes = config.vision.max_image_bytes
+    if len(raw) > max_bytes:
+        await msg.reply_text(
+            f"Photo is too large ({len(raw)} bytes; limit {max_bytes})."
+        )
+        return
+
+    caption = (update.message.caption or "").strip()
+    base_text = caption or DEFAULT_PHOTO_PROMPT
+    filename, _path = cache_user_image(
+        raw,
+        prefix=config.vision.file_prefix,
+        media_type=_photo_media_type(),
+    )
+    user_text = f"{base_text}\n{format_cache_reference(filename)}"
+    image = UserImage(data=raw, media_type=_photo_media_type())
+    await _run_agent_for_message(
+        update,
+        context,
+        config=config,
+        user_text=user_text,
+        user_images=[image],
+        message_format=message_format,
+    )
 
 
 async def handle_message(
@@ -261,6 +395,7 @@ async def handle_message(
     *,
     config: AgentConfig,
     allowed_user_id: int,
+    message_format: str = "html",
 ) -> None:
     user = update.effective_user
     if not is_authorized(user.id if user else None, allowed_user_id):
@@ -271,7 +406,13 @@ async def handle_message(
     if not text:
         return
 
-    await _run_agent_for_message(update, context, config=config, user_text=text)
+    await _run_agent_for_message(
+        update,
+        context,
+        config=config,
+        user_text=text,
+        message_format=message_format,
+    )
 
 
 async def handle_callback(
@@ -280,6 +421,7 @@ async def handle_callback(
     *,
     config: AgentConfig,
     allowed_user_id: int,
+    message_format: str = "html",
 ) -> None:
     query = update.callback_query
     await query.answer()
@@ -338,10 +480,14 @@ async def handle_callback(
             config=pending.config,
             created_at=time.time(),
         )
-        await send_interrupt_prompt(update.effective_chat, result)
+        await send_interrupt_prompt(
+            update.effective_chat, result, message_format=message_format
+        )
         return
 
-    await send_text_chunks(update.effective_chat, str(result))
+    await send_text_chunks(
+        update.effective_chat, str(result), message_format=message_format
+    )
 
 
 async def cmd_start(
@@ -358,8 +504,9 @@ async def cmd_start(
         return
     name = config.assistant_name
     voice_hint = " Send a voice note to chat by voice." if config.stt.enabled else ""
+    photo_hint = " Send a photo to chat with images." if config.vision.enabled else ""
     await update.message.reply_text(
-        f"{name} is ready. Send a message to chat.{voice_hint}\n"
+        f"{name} is ready. Send a message to chat.{voice_hint}{photo_hint}\n"
         "Commands: /help, /newthread"
     )
 
@@ -384,9 +531,14 @@ async def cmd_help(
         if config.stt.enabled
         else ""
     )
+    photo_line = (
+        "Photos are sent to the vision model with your caption (native multimodal).\n\n"
+        if config.vision.enabled
+        else ""
+    )
     await update.message.reply_text(
         f"{config.assistant_name} — Best Buddy on Telegram\n\n"
-        f"{voice_line}"
+        f"{voice_line}{photo_line}"
         "/newthread — start a fresh conversation (history only; memory is shared)\n"
         "Ask BB to save preferences with save_memory; verify with list_memories."
         f"{trace_hint}"
@@ -426,6 +578,7 @@ def build_application(
 
     allowed = settings.allowed_user_id
     assert allowed is not None
+    msg_format = settings.message_format
 
     async def _post_init(application: Any) -> None:
         import asyncio
@@ -437,6 +590,7 @@ def build_application(
             application.bot,
             asyncio.get_running_loop(),
             chat_id=int(allowed),
+            message_format=msg_format,
         )
         start_background_services(config, settings)
 
@@ -454,13 +608,40 @@ def build_application(
     )
 
     async def on_message(update: Any, context: Any) -> None:
-        await handle_message(update, context, config=config, allowed_user_id=allowed)
+        await handle_message(
+            update,
+            context,
+            config=config,
+            allowed_user_id=allowed,
+            message_format=msg_format,
+        )
 
     async def on_voice(update: Any, context: Any) -> None:
-        await handle_voice(update, context, config=config, allowed_user_id=allowed)
+        await handle_voice(
+            update,
+            context,
+            config=config,
+            allowed_user_id=allowed,
+            message_format=msg_format,
+        )
+
+    async def on_photo(update: Any, context: Any) -> None:
+        await handle_photo(
+            update,
+            context,
+            config=config,
+            allowed_user_id=allowed,
+            message_format=msg_format,
+        )
 
     async def on_callback(update: Any, context: Any) -> None:
-        await handle_callback(update, context, config=config, allowed_user_id=allowed)
+        await handle_callback(
+            update,
+            context,
+            config=config,
+            allowed_user_id=allowed,
+            message_format=msg_format,
+        )
 
     async def on_start(update: Any, context: Any) -> None:
         await cmd_start(update, context, config=config, allowed_user_id=allowed)
@@ -476,6 +657,7 @@ def build_application(
     app.add_handler(CommandHandler("newthread", on_newthread))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_message))
     app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, on_voice))
+    app.add_handler(MessageHandler(filters.PHOTO, on_photo))
     app.add_handler(CallbackQueryHandler(on_callback))
     return app
 
