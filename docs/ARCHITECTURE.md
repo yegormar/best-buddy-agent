@@ -1,5 +1,7 @@
 # Best Buddy Agent Architecture (v0.2 — pydantic-ai)
 
+![Best Buddy Agent Architecture](best_buddy_agent_architecture.png)
+
 ## Agent runtime
 
 ```mermaid
@@ -14,6 +16,7 @@ flowchart LR
   MEM[memory_layer + knowledge_graph]
   TH[threads SQLite]
   WF[workflow_engine]
+  DW[deadline_watch]
   CLI --> RT
   TG --> RT
   RT --> AR --> PA --> OLL
@@ -21,25 +24,39 @@ flowchart LR
   PA --> MEM
   AR --> TH
   WF --> AR
+  DW --> WF
+  TG --> WF
 ```
 
 - **`agent_runtime.py`**: `build_agent()`, `run_turn()`, `resume_turn()`, `BestBuddyDeps`
-- **`agent_trace.py` / `trace_logging.py`**: Local copy-paste trace blocks (`agent-trace.log`)
+- **`agent_trace.py`**: Local copy-paste trace blocks (`agent-trace.log`)
 - **`memory_recall.py`**: single memory recall path (inject + `search_memory` tool)
 - **`orchestrator.py`**: thin delegate to `run_turn()` (backward compatible)
 - **`approval.py`**: `InterruptResult`, `cli_approval_resolver`, `fixed_approval_resolver`
-- **`channels/telegram.py`**: long-polling Telegram bot → `chat_once` / `resume_turn` (see [TELEGRAM.md](TELEGRAM.md))
+- **`channels/telegram.py`**: long-polling bot → `chat_once` / `resume_turn`; voice (STT), photos (vision)
+- **`channels/telegram_format.py`**: Markdown → Telegram HTML, GFM table rewriting
+- **`notifications/telegram_notifier.py`**: proactive messages from workflow scheduler threads
+- **`services/bootstrap.py`**: starts workflow scheduler + seeds `deadline-watch-scan` workflow
+- **`vision_cache.py`**: on-disk photo cache; strips pixels from persisted thread history
 
 ## Tools (`tools/`)
 
-| Tool | HITL |
-|------|------|
-| `read_file`, `list_files` | no |
-| `search_memory`, `save_memory`, `list_memories`, `get_memory` | no |
-| `delete_memory`, `write_file` | yes (`requires_approval`) |
-| `workflow_run_status`, `trigger_workflow`, `list_workflows`, `create_workflow`, `update_workflow`, `delete_workflow`, `run_workflow_now` | no |
-| `get_current_datetime`, `search_events` | no (calendar) |
-| `create_calendar_event`, `update_calendar_event` | yes |
+Tools load conditionally from config (`gmail.is_ready()`, `calendar.is_ready()`, `[web]`, `[vision]`).
+
+| Tool | HITL | When loaded |
+|------|------|-------------|
+| `read_file`, `list_files`, `write_file` | write only | always |
+| `search_memory`, `save_memory`, `list_memories`, `get_memory` | no | always |
+| `delete_memory`, `link_memories`, `update_memory`, `explore_connections` | delete only | always |
+| `workflow_run_status`, `trigger_workflow`, `list_workflows`, `create_workflow`, `update_workflow`, `delete_workflow`, `run_workflow_now`, `create_reminder` | no | always |
+| `search_gmail`, `get_gmail_message`, `get_gmail_thread` | no | `[gmail]` ready |
+| `create_gmail_draft` | yes | `[gmail]` ready |
+| `get_current_datetime`, `search_events` | no | `[calendar]` ready, or `[deadline_watch]` only (datetime) |
+| `create_calendar_event`, `update_calendar_event` | yes | `[calendar]` ready |
+| `web_search`, `fetch_url` | no | `[web] enabled` |
+| `revisit_image` | no | `[vision] enabled` |
+
+Tool descriptions come from `conf/prompts/{language}/tools/*.txt` at runtime.
 
 ## Memory (unchanged graph; see recall note)
 
@@ -73,16 +90,26 @@ Optional: install real embeddings later (e.g. optional extra) and rebuild the FA
 - `workflow_engine.py`: typed steps; **prompt** steps use `make_workflow_step_executor()` → `run_turn()`
 - Scheduler started by Telegram bot via `services/bootstrap.py`
 - `notify_only` workflows and `function` steps for deterministic scans
-- Deadline Watch: `deadline_watch/` + `docs/DEADLINE_WATCH.md`
+- Deadline Watch: `deadline_watch/` + [DEADLINE_WATCH.md](DEADLINE_WATCH.md)
 - `workflow_models.py`: `WorkflowPlan` for NL workflow creation (structured output)
 - **approval** steps use workflow-level `approval_resolver` (unchanged)
+
+## Telegram channel extras
+
+| Feature | Config | Notes |
+|---------|--------|-------|
+| Voice / audio | `[stt]` | faster-whisper; startup self-test in doctor |
+| Photos | `[vision]` | Native multimodal via Ollama; cache under `{data_dir}/vision_cache/` |
+| Formatting | `[telegram] message_format` | `html` (default) or `plain` |
+| Proactive notify | scheduler | `telegram_notifier` uses same formatting as chat replies |
 
 ## Reliability (optional `[reliability]`)
 
 - Summarization near `llm_num_ctx * 0.85`
 - `PatchToolCallsCapability`, `StuckLoopDetection` from pydantic-deep when importable
+- `agent.reliability_required = true` fails `doctor` if packages missing
 
 ## Dependencies
 
-- **Required:** `pydantic-ai-slim[openai]` (Ollama via OpenAI-compatible client)
+- **Required:** `pydantic-ai-slim[openai]` (Ollama via OpenAI-compatible client), `ddgs`, `httpx`
 - **No** LangChain / LangGraph

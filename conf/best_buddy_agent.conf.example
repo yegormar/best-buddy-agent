@@ -33,8 +33,7 @@ llm_think = false
 language = en
 
 [tools]
-# Current tool router scope is intentionally limited to read-only file access.
-# Paths are resolved relative to this config file unless absolute.
+# Allowed root for read_file / write_file / list_files (paths relative to this conf file).
 files_root = ..
 
 # Max orchestrator tool iterations per user turn.

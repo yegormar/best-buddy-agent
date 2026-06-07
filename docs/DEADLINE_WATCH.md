@@ -34,7 +34,7 @@ proposal_ttl_hours = 72
 
 ## Dedupe
 
-- Processed emails tracked in `~/.best_buddy_agent/reminders.db`
+- Processed emails tracked in `{BEST_BUDDY_AGENT_DATA_DIR}/reminders.db` (default `~/.best_buddy_agent/reminders.db`)
 - Dismissed emails are not re-proposed unless the thread updates
 - Reminder fires recorded per `(proposal_id, lead_time)`
 

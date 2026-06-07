@@ -57,7 +57,15 @@ Paste one or more blocks into bug reports or to a coding assistant.
 
 ## Human-in-the-loop
 
-Destructive tools (`write_file`, `delete_memory`) use pydantic-ai `requires_approval`. The CLI prompts `Approve? [y/N]`.
+These tools use pydantic-ai `requires_approval`:
+
+| Tool | Notes |
+|------|-------|
+| `write_file`, `delete_memory` | Always registered |
+| `create_gmail_draft` | When `[gmail]` is ready |
+| `create_calendar_event`, `update_calendar_event` | When `[calendar]` is ready |
+
+CLI prompts `Approve? [y/N]`. Telegram sends inline **Approve** / **Deny** buttons (`DEFERRED TOOL PENDING` / `DEFERRED RESUME` in the trace log).
 
 ## Memory recall
 

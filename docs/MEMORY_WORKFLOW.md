@@ -1,5 +1,9 @@
 # Memory workflow (developer guide)
 
+![Best Buddy Memory Architecture](best_buddy_memory_architecture.png)
+
+Diagram generation prompt (for re-creating or refining the poster): [MEMORY_DIAGRAM_PROMPT.md](MEMORY_DIAGRAM_PROMPT.md).
+
 This document explains how **long-term memory** works in `best_buddy_agent`: what gets stored, when, how it reaches the LLM, and how the graph is maintained over time. Written for **human developers** operating or extending the system.
 
 For coding agents working in this repo, see [MEMORY_WORKFLOW_AI.md](MEMORY_WORKFLOW_AI.md) (dense, path-oriented reference).

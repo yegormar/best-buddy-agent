@@ -48,7 +48,7 @@ Everything lives under `/opt/best-buddy-agent/` and is owned by a dedicated `bes
   conf/                 # best_buddy_agent.conf, prompts/
   dist/                 # wheel from dev build (optional after install)
   .venv/                # virtualenv
-  data/                 # BEST_BUDDY_AGENT_DATA_DIR (DBs, gmail/*.json)
+  data/                 # BEST_BUDDY_AGENT_DATA_DIR (DBs, gmail/*.json, vision_cache/)
   workspace/            # files_root — only path file tools may use
   log/                  # trace log
 ```
@@ -93,10 +93,10 @@ sudo chown -R bestbuddy:bestbuddy /opt/best-buddy-agent
 sudo -u bestbuddy python3 -m venv /opt/best-buddy-agent/.venv
 sudo -u bestbuddy /opt/best-buddy-agent/.venv/bin/pip install -U pip wheel
 sudo -u bestbuddy /opt/best-buddy-agent/.venv/bin/pip install \
-  '/opt/best-buddy-agent/dist/best_buddy_agent-0.1.0-py3-none-any.whl[telegram,gmail,calendar,faiss,reliability]'
+  '/opt/best-buddy-agent/dist/best_buddy_agent-0.1.0-py3-none-any.whl[telegram,stt,gmail,calendar,faiss,reliability]'
 ```
 
-Alternative: git clone into `/opt/best-buddy-agent` and `pip install -e '.[telegram,gmail,...]'` (editable dev-style install).
+Alternative: git clone into `/opt/best-buddy-agent` and `pip install -e '.[telegram,stt,gmail,calendar,faiss,reliability]'` (editable dev-style install).
 
 ### Wheel build on dev machine
 
@@ -135,15 +135,19 @@ sudo -u bestbuddy cp /opt/best-buddy-agent/conf/best_buddy_agent.conf.example \
 Edit `/opt/best-buddy-agent/conf/best_buddy_agent.conf`:
 
 
-| Section       | Production values                                                           |
-| ------------- | --------------------------------------------------------------------------- |
-| `[llm]`       | `llm_host = ubuntu-llm` (or your Ollama host), `llm_model` must exist there |
-| `[tools]`     | `files_root = ../workspace`                                                 |
-| `[telegram]`  | `enabled = true`                                                            |
-| `[web]`       | `enabled = true` if you want internet search                                |
-| `[gmail]`     | `enabled = true` after OAuth; paths under `data/` (below)                   |
-| `[workflows]` | `enabled = true`                                                            |
-| `[logging]`   | `enabled = true`, `file = ../log/trace.log`                                 |
+| Section           | Production values                                                           |
+| ----------------- | --------------------------------------------------------------------------- |
+| `[llm]`           | `llm_host = ubuntu-llm` (or your Ollama host), `llm_model` must exist there |
+| `[tools]`         | `files_root = ../workspace`                                                 |
+| `[telegram]`      | `enabled = true`, `message_format = html` (optional)                        |
+| `[web]`           | `enabled = true` if you want internet search                                |
+| `[gmail]`         | `enabled = true` after OAuth; paths under `data/` (below)                   |
+| `[calendar]`      | `enabled = true` if using Calendar tools or Deadline Watch **Approve + Calendar** |
+| `[workflows]`     | `enabled = true` (required for reminders and deadline watch)                |
+| `[deadline_watch]`| `enabled = true` if you want proactive Gmail deadline proposals             |
+| `[stt]`           | `enabled = true` for voice notes — see [STT env vars](#stt-and-vision-env)  |
+| `[vision]`        | `enabled = true` for photos — Ollama model must support `vision`            |
+| `[logging]`       | `enabled = true`, `file = ../log/trace.log`                                 |
 
 
 Paths in the config file are relative to `conf/` (e.g. `../data` → install root `data/`).
@@ -177,6 +181,22 @@ EOF
 ```
 
 Use `**640` and group `bestbuddy**` so the service user can read the file when you run `doctor` manually as `bestbuddy`. systemd also reads root-owned `600` files when starting the service, but manual `source /etc/best-buddy/env` as `bestbuddy` needs read permission.
+
+### STT and vision env
+
+When `[stt] enabled = true`, the config must set existing directories for `hf_home` and `hf_hub_cache`, and the Whisper model must already be cached (`local_files_only=true` at runtime). Add to `/etc/best-buddy/env`:
+
+```bash
+LD_LIBRARY_PATH=/usr/local/lib/ollama/cuda_v12
+HF_HOME=/opt/huggingface
+HF_HUB_CACHE=/opt/huggingface/cache
+```
+
+Prefetch `large-v3` (or your `stt.model`) into `hf_hub_cache` before enabling STT. On a shared GPU host, consider `stt.device = cpu` for a second bot instance if CUDA runs out of memory.
+
+When `[vision] enabled = true`, use an Ollama model with the `vision` capability (`ollama show <model>`). Cached photos land in `data/vision_cache/` under `BEST_BUDDY_AGENT_DATA_DIR`.
+
+See [TELEGRAM.md](TELEGRAM.md) for voice and photo behavior.
 
 ---
 
@@ -239,7 +259,7 @@ rsync -av ~/.best_buddy_agent/ user@server:/opt/best-buddy-agent/data/
 ssh user@server 'sudo chown -R bestbuddy:bestbuddy /opt/best-buddy-agent/data'
 ```
 
-Important files: `memory.db`, `threads.db`, `workflows.db`, `gmail/credentials.json`, `gmail/token.json`, `calendar/` (if used).
+Important files: `memory.db`, `threads.db`, `workflows.db`, `reminders.db`, `memory_vectors/`, `vision_cache/`, `gmail/credentials.json`, `gmail/token.json`, `calendar/` (if used).
 
 If `gmail/token.json` is missing on the server, Gmail tools and deadline watch will fail doctor checks until you complete §5.
 
@@ -275,6 +295,12 @@ Send a Telegram message, then Ctrl+C.
 ---
 
 ## 9. systemd service (isolated user)
+
+**Single instance:** create `/etc/systemd/system/best-buddy-telegram.service` as below.
+
+**Multiple instances** (separate bots on one host): use the template in `scripts/systemd/best-buddy-telegram@.service` with per-instance env files under `/etc/best-buddy/instances/<name>.env` (see `scripts/systemd/instance.env.example` and `scripts/run-telegram.sh`). Each instance needs its own `BB_ROOT`, bot token, data dir, and conf.
+
+### Single-instance unit
 
 Create `/etc/systemd/system/best-buddy-telegram.service`.
 
@@ -343,7 +369,7 @@ scp dist/best_buddy_agent-0.1.0-py3-none-any.whl user@server:/opt/best-buddy-age
 
 # on server
 sudo -u bestbuddy /opt/best-buddy-agent/.venv/bin/pip install \
-  '/opt/best-buddy-agent/dist/best_buddy_agent-0.1.0-py3-none-any.whl[telegram,gmail,calendar,faiss,reliability]'
+  '/opt/best-buddy-agent/dist/best_buddy_agent-0.1.0-py3-none-any.whl[telegram,stt,gmail,calendar,faiss,reliability]'
 sudo systemctl restart best-buddy-telegram
 ```
 
@@ -365,7 +391,10 @@ After any `pip install`, restart the service (running process does not load new 
 | `Read-only file system` on trace.log         | `ReadWritePaths` must include `%h/log`; `bestbuddy` home (`useradd -d`) must match `WorkingDirectory` |
 | systemd start fails after hardening          | `getent passwd bestbuddy` home must equal `WorkingDirectory`; see `journalctl -u best-buddy-telegram` |
 | Permission denied on log/data                | `chown -R bestbuddy:bestbuddy /opt/best-buddy-agent`                                                  |
-| Doctor STT `CUDA … out of memory` on 2nd instance | GPU already holds Ollama + first bot’s `large-v3`; doctor loads Whisper again. `large-v3` **is** cached under `/opt/huggingface/cache`. Set `stt.device = cpu` (or `enabled = false`) on the second instance’s conf. Run doctor with `source /etc/best-buddy/env_andrey`. |
+| Doctor STT `CUDA … out of memory` on 2nd instance | GPU already holds Ollama + first bot’s Whisper model; doctor loads Whisper again. Set `stt.device = cpu` (or `enabled = false`) on the second instance’s conf. |
+| Vision doctor fails | `llm_model` lacks Ollama `vision` capability — pull a vision model or disable `[vision]` |
+| Voice notes ignored | `[stt] enabled = false`, missing `[stt]` paths, or Whisper weights not in `hf_hub_cache` |
+| Deadline proposals missing | `[deadline_watch]` + Gmail + Telegram must all pass doctor; bot must stay running |
 
 
 ---

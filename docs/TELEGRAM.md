@@ -1,5 +1,7 @@
 # Telegram channel
 
+![Best Buddy Telegram Channel Architecture](best_buddy_telegram_architecture.png)
+
 Best Buddy can run as a **Telegram bot** (text chat, long polling). The bot is a **transport** — it calls the same `chat_once` / `run_turn` runtime as the CLI, not a separate LLM tool.
 
 ## Setup
@@ -49,7 +51,11 @@ Use `/newthread` in Telegram to start a fresh chat history; saved facts remain i
 
 ## Approvals
 
-Tools `delete_memory` and `write_file` require human approval. The bot sends **Approve** / **Deny** buttons. New messages are blocked until you respond.
+These tools require human approval (CLI prompt or Telegram **Approve** / **Deny** buttons). New messages are blocked until you respond:
+
+- `write_file`, `delete_memory`
+- `create_gmail_draft` (when Gmail is configured)
+- `create_calendar_event`, `update_calendar_event` (when Calendar is configured)
 
 ## Voice messages (optional)
 
@@ -79,7 +85,7 @@ max_image_bytes = 10485760
 
 Use a caption on the photo for your question; without a caption the bot sends a default prompt (`The user sent a photo.`). Trace logs record image size and media type, not raw bytes.
 
-After the first turn, **pixels are removed from thread history**. Only a cache filename remains (default pattern `tg_photo_yyyy_mm_dd_HH_MM_SS.jpg` under `~/.best_buddy_agent/vision_cache/`). For follow-up visual questions, the agent calls **`revisit_image`** with that `image_name` to reload the file natively.
+After the first turn, **pixels are removed from thread history**. Only a cache filename remains (default pattern `tg_photo_yyyy_mm_dd_HH_MM_SS.jpg` under `{BEST_BUDDY_AGENT_DATA_DIR}/vision_cache/`, default `~/.best_buddy_agent/vision_cache/`). For follow-up visual questions, the agent calls **`revisit_image`** with that `image_name` to reload the file natively.
 
 ```ini
 [vision]
